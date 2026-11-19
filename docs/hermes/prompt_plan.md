@@ -23,8 +23,8 @@
    - `plugin.yaml` + README.
    - `tests/test_plugin.py` com `_post` falso (sem sessão real).
 6. [x] Instalador
-   - `scripts/hermes-install.ts`: symlink em `~/.hermes/plugins/habblaud`, `hermes plugins enable` no padrão e nos
-     perfis, `--dry-run`, `--no-enable`, `--force`, uninstall e status.
+   - `scripts/hermes-install.ts`: symlink em `~/.hermes/plugins/habblaud` e em `~/.hermes/profiles/*/plugins/`,
+     `hermes plugins enable` no padrão e nos perfis, `--dry-run`, `--no-enable`, `--force`, uninstall e status.
    - Scripts npm `hermes:install/uninstall/status`.
 7. [x] Documentação e evidências
    - Spec, prompt plan, decisões, CHANGELOG, README do servidor, README do plugin e traduções.

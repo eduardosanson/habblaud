@@ -29,8 +29,8 @@ Do checkout do Habblaud:
 npm run hermes:install
 ```
 
-O instalador cria o symlink `~/.hermes/plugins/habblaud`, habilita o plugin no perfil padrão e em cada
-`~/.hermes/profiles/*` e configura, por perfil:
+O instalador cria o symlink `~/.hermes/plugins/habblaud` e um em cada `~/.hermes/profiles/*/plugins/`, habilita o
+plugin no perfil padrão e em cada perfil e configura, por perfil:
 
 - `plugins.entries.habblaud.allow_gateway_injection: true` — permite o `ctx.inject_message` nas sessões TUI/gateway;
 - `security.approval.transport: habblaud` — as aprovações passam pelo escritório;
@@ -42,11 +42,13 @@ Se preferir na mão:
 
 ```sh
 ln -s "$(pwd)/mod/habblaud-hermes" ~/.hermes/plugins/habblaud
+ln -s "$(pwd)/mod/habblaud-hermes" ~/.hermes/profiles/developer/plugins/habblaud
 hermes plugins enable habblaud
-hermes config set plugins.entries.habblaud.allow_gateway_injection true
-hermes config set security.approval.transport habblaud
-hermes config set security.approval.transport_fallback builtin
-# repita com -p <perfil> em cada perfil
+hermes -p developer plugins enable habblaud
+hermes -p developer config set plugins.entries.habblaud.allow_gateway_injection true
+hermes -p developer config set security.approval.transport habblaud
+hermes -p developer config set security.approval.transport_fallback builtin
+# repita o symlink e os config set com -p <perfil> em cada perfil
 ```
 
 Reinicie as sessões do Hermes depois de instalar.

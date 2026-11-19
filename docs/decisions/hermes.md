@@ -39,3 +39,11 @@
 - Decisão: o cartão de permissão do Hermes só oferece aprovar/recusar (sem “sempre permitir”); o transport não devolve escopo `session`/`always`.
 - Decisão: o endpoint `/api/hermes/sessions` é local e lista só as sessões principais vivas, para o plugin buscar mensagens sem conhecer o banco.
 - Risco aceito: mensagens para uma sessão que nenhum processo do perfil tem falham no prazo da fila; o plugin devolve `retry` para os outros processos tentarem.
+
+## EVIDÊNCIAS → PR (Fase B) — 2026-11-19
+
+- Decisão: cada perfil do Hermes tem a própria pasta `plugins/`, então o instalador cria o symlink também em `profiles/*/plugins` — o link da base sozinho não chega aos perfis (descoberto na instalação real).
+- Risco aceito: instalar em 28 perfis é mais lento e mexe em cada `config.yaml` via `hermes config set`; o uninstall limpa as três chaves e os symlinks.
+
+- Decisão: cada perfil do Hermes tem a própria pasta `plugins/`, então o instalador cria o symlink também em `profiles/*/plugins` — o link da base sozinho não chega aos perfis (descoberto na instalação real).
+- Risco aceito: instalar em 28 perfis é mais lento e mexe em cada `config.yaml` via `hermes config set`; o uninstall limpa as três chaves e os symlinks.

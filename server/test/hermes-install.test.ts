@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { hermesHome, hermesPluginCommands, hermesProfiles, linkState, main, parseArgs, pluginLink, PLUGIN_DIR } from '../../scripts/hermes-install';
+import { hermesHome, hermesPluginCommands, hermesProfiles, linkState, main, parseArgs, pluginLink, profilePluginLink, PLUGIN_DIR } from '../../scripts/hermes-install';
 
 function dir(): string {
   return mkdtempSync(join(tmpdir(), 'habblaud-hermes-'));
@@ -70,6 +70,7 @@ describe('instalador do Hermes: fluxo com runner falso', () => {
     };
     expect(await main(['install'], { home, run, out: (l) => out.push(l) })).toBe(0);
     expect(linkState(pluginLink(home))).toBe('ours');
+    expect(linkState(profilePluginLink(home, 'dev'))).toBe('ours');
     expect(calls.slice(0, 2)).toEqual([
       ['hermes', 'plugins', 'enable', 'habblaud'],
       ['hermes', '-p', 'dev', 'plugins', 'enable', 'habblaud'],
@@ -79,15 +80,32 @@ describe('instalador do Hermes: fluxo com runner falso', () => {
     expect(calls).toContainEqual(['hermes', '-p', 'dev', 'config', 'set', 'plugins.entries.habblaud.allow_gateway_injection', 'true']);
     expect(out.join('\n')).toContain('Reinicie as sessões');
 
+    const statusOut: string[] = [];
+    expect(await main(['status'], { home, out: (l) => statusOut.push(l) })).toBe(0);
+    expect(statusOut.join('\n')).toContain('Plugin ligado em todos os perfis.');
+
     calls.length = 0;
     expect(await main(['uninstall'], { home, run, out: (l) => out.push(l) })).toBe(0);
     expect(linkState(pluginLink(home))).toBe('missing');
+    expect(linkState(profilePluginLink(home, 'dev'))).toBe('missing');
     expect(calls.slice(0, 2)).toEqual([
       ['hermes', 'plugins', 'disable', 'habblaud'],
       ['hermes', '-p', 'dev', 'plugins', 'disable', 'habblaud'],
     ]);
     expect(calls).toContainEqual(['hermes', 'config', 'unset', 'security.approval.transport']);
     expect(calls).toContainEqual(['hermes', '-p', 'dev', 'config', 'unset', 'plugins.entries.habblaud.allow_gateway_injection']);
+  });
+
+  it('pasta de verdade num perfil bloqueia o install antes de mexer no link da base', async () => {
+    const home = dir();
+    mkdirSync(join(home, 'profiles', 'dev', 'plugins', 'habblaud'), { recursive: true });
+    const out: string[] = [];
+    const calls: string[][] = [];
+    const run = (command: string, args: string[]) => (calls.push([command, ...args]), { ok: true });
+    expect(await main(['install'], { home, run, out: (l) => out.push(l) })).toBe(1);
+    expect(linkState(pluginLink(home))).toBe('missing');
+    expect(calls).toEqual([]);
+    expect(out.join('\n')).toContain('não vou sobrescrever');
   });
 
   it('--dry-run não grava; --no-enable só liga o symlink; pasta de verdade não é sobrescrita', async () => {

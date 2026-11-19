@@ -73,6 +73,16 @@ export function pluginLink(home: string): string {
   return join(home, 'plugins', PLUGIN_NAME);
 }
 
+/** Symlink do plugin em cada perfil: o Hermes carrega plugins da pasta do perfil, não só da base. */
+export function profilePluginLink(home: string, profile: string): string {
+  return join(home, 'profiles', profile, 'plugins', PLUGIN_NAME);
+}
+
+/** Todos os lugares do plugin: a pasta base e cada perfil. */
+export function pluginLinks(home: string): string[] {
+  return [pluginLink(home), ...hermesProfiles(home).map((profile) => profilePluginLink(home, profile))];
+}
+
 /** O que existe no caminho do symlink: ausente, nosso, link para outro lugar ou pasta de verdade. */
 export function linkState(link: string, pluginDir = PLUGIN_DIR): 'missing' | 'ours' | 'other-link' | 'directory' | 'file' {
   if (!existsSync(link) && !isSymlink(link)) return 'missing';
@@ -102,23 +112,28 @@ function runCommand(command: string, args: string[]): { ok: boolean; missing?: b
 }
 
 function install(opts: HermesInstallOptions, out: (line: string) => void): number {
-  const link = pluginLink(opts.home);
-  const state = linkState(link);
-  if (state === 'directory' || state === 'file') {
-    out(`Já existe ${link} e ele não é um symlink; não vou sobrescrever. Remova na mão se for um plugin antigo.`);
-    return 1;
-  }
-  if (state === 'other-link' && !opts.force) {
-    out(`O symlink ${link} aponta para outro lugar; use --force para trocar.`);
-    return 1;
+  const links = pluginLinks(opts.home);
+  // Confere tudo antes de mexer em qualquer link: uma pasta de verdade no lugar do plugin não pode ser sobrescrita.
+  for (const link of links) {
+    const state = linkState(link);
+    if (state === 'directory' || state === 'file') {
+      out(`Já existe ${link} e ele não é um symlink; não vou sobrescrever. Remova na mão se for um plugin antigo.`);
+      return 1;
+    }
+    if (state === 'other-link' && !opts.force) {
+      out(`O symlink ${link} aponta para outro lugar; use --force para trocar.`);
+      return 1;
+    }
   }
   if (opts.dryRun) {
-    out(`Criaria o symlink ${link} -> ${PLUGIN_DIR}.`);
+    for (const link of links) out(`Criaria o symlink ${link} -> ${PLUGIN_DIR}.`);
   } else {
-    mkdirSync(dirname(link), { recursive: true });
-    if (isSymlink(link)) rmSync(link);
-    symlinkSync(PLUGIN_DIR, link, 'dir');
-    out(`Plugin ligado em ${link}.`);
+    for (const link of links) {
+      mkdirSync(dirname(link), { recursive: true });
+      if (isSymlink(link)) rmSync(link);
+      symlinkSync(PLUGIN_DIR, link, 'dir');
+    }
+    out(`Plugin ligado em ${pluginLink(opts.home)} e em ${links.length - 1} perfil(is).`);
   }
 
   if (opts.noEnable) {
@@ -163,7 +178,6 @@ function install(opts: HermesInstallOptions, out: (line: string) => void): numbe
 }
 
 function uninstall(opts: HermesInstallOptions, out: (line: string) => void): number {
-  const link = pluginLink(opts.home);
   const run = opts.run ?? runCommand;
   for (const args of hermesPluginCommands(opts.home, 'disable')) {
     const shown = ['hermes', ...args].join(' ');
@@ -181,14 +195,16 @@ function uninstall(opts: HermesInstallOptions, out: (line: string) => void): num
       if (r.missing || !r.ok) out(`Não consegui limpar: ${shown}`);
     }
   }
-  if (linkState(link) === 'ours') {
-    if (opts.dryRun) out(`Removeria o symlink ${link}.`);
-    else {
-      rmSync(link);
-      out(`Symlink removido: ${link}.`);
+  for (const link of pluginLinks(opts.home)) {
+    if (linkState(link) === 'ours') {
+      if (opts.dryRun) out(`Removeria o symlink ${link}.`);
+      else {
+        rmSync(link);
+        out(`Symlink removido: ${link}.`);
+      }
+    } else {
+      out(`Nada para remover em ${link} (ele não é um symlink do Habblaud).`);
     }
-  } else {
-    out(`Nada para remover em ${link} (ele não é um symlink do Habblaud).`);
   }
   return 0;
 }
@@ -209,6 +225,12 @@ function status(opts: HermesInstallOptions, out: (line: string) => void): number
   out(`Hermes em ${opts.home}: plugin ${PLUGIN_NAME} — ${label}.`);
   const profiles = hermesProfiles(opts.home);
   out(`Perfis: ${profiles.length ? profiles.join(', ') : 'nenhum (só o padrão)'}`);
+  const missing = profiles.filter((profile) => linkState(profilePluginLink(opts.home, profile)) !== 'ours');
+  out(
+    missing.length
+      ? `Sem o plugin nos perfis: ${missing.join(', ')} (rode npm run hermes:install).`
+      : 'Plugin ligado em todos os perfis.',
+  );
   out('Confira a habilitação com: hermes plugins list (e hermes -p <perfil> plugins list).');
   return 0;
 }

@@ -430,9 +430,9 @@ responde aprovações pelo escritório.
   `hermesEvents` no `/api/health` diz se a fonte está ligada.
 - **Plugin:** `mod/habblaud-hermes` (Python, sem dependência nova) publica em fila + thread daemon, com POST de 1,5 s e
   falha em silêncio. `HABBLAUD_HERMES=0` desliga; `HABBLAUD_HERMES_URL`/`HABBLAUD_PORT` mudam o destino;
-  `HABBLAUD_HERMES_PROJECT` força a sala. Instalação: `npm run hermes:install` (symlink em `~/.hermes/plugins/habblaud`,
-  `hermes plugins enable` e `hermes config set` de `allow_gateway_injection` e do transport de aprovação em cada perfil);
-  `hermes:status` e `hermes:uninstall` acompanham.
+  `HABBLAUD_HERMES_PROJECT` força a sala. Instalação: `npm run hermes:install` (symlinks em `~/.hermes/plugins/habblaud`
+  e em `~/.hermes/profiles/*/plugins/`, `hermes plugins enable` e `hermes config set` de `allow_gateway_injection` e do
+  transport de aprovação em cada perfil); `hermes:status` e `hermes:uninstall` acompanham.
 - **Ainda fora:** sessões encerradas/antigas no terminal (o plugin só vê sessões vivas); anexos, menções e comandos de
   barra na caixa; e escopos “sessão”/“sempre permitir” na aprovação (o transport só responde `once`/`deny`).
 - **Habblaud World:** agentes do Hermes ficam fora da projeção enquanto o protocolo do World só aceitar Claude

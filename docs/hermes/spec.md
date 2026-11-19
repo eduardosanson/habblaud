@@ -29,8 +29,9 @@ permissões ficam para as fases seguintes.
   varredura.
 - RF11: sem nenhum evento, a fonte não aparece no snapshot/health; depois do primeiro, `sources()` mostra
   `hermes` com as sessões principais.
-- RF12: `npm run hermes:install` cria o symlink `~/.hermes/plugins/habblaud` e habilita nos perfis; `uninstall` e
-  `status` funcionam sem tocar no resto do Hermes.
+- RF12: `npm run hermes:install` cria o symlink `~/.hermes/plugins/habblaud` e um em cada
+  `~/.hermes/profiles/*/plugins/`, e habilita nos perfis; `uninstall` e `status` funcionam sem tocar no resto do
+  Hermes.
 
 ## Requisitos não funcionais
 
@@ -58,8 +59,9 @@ permissões ficam para as fases seguintes.
 - CA09: `/api/hermes/events` responde 403 fora do Host local, 405 para GET, 415 sem JSON, 400 sem `event.type` e 413
   acima de 256 KB.
 - CA10: sem fonte, a rota responde `{ok: false}`; com fonte e evento válido, `{ok: true}`.
-- CA11: o plugin não envia `user_message`, prompt, transcript ou segredo; só os campos normalizados.
-- CA12: `npm run hermes:install -- --dry-run` não grava; instalar cria o symlink e habilita; desinstalar remove.
+- CA11: o plugin não lê transcript nem credenciais; a conversa da Fase B vem dos hooks e é mascarada/cortada.
+- CA12: `npm run hermes:install -- --dry-run` não grava; instalar cria os symlinks (base e perfis) e habilita;
+  desinstalar remove.
 
 ## Definition of Done (Fase A)
 
@@ -89,9 +91,9 @@ mensagens e `register_approval_transport` para responder aprovações.
 - RF26: o plugin registra o transport `habblaud`; `present_fn` manda o pedido para `POST /api/permissions`
   (`provider: 'hermes'`) e espera a decisão. `allow` vira `once`; `deny` vira `deny`; sem página, sessão desconhecida
   ou “Responder no terminal”, o transport falha e o host usa o prompt embutido (`transport_fallback: builtin`).
-- RF27: o instalador configura `plugins.entries.habblaud.allow_gateway_injection: true`,
-  `security.approval.transport: habblaud` e `security.approval.transport_fallback: builtin` em cada perfil; o
-  `uninstall` limpa as três chaves.
+- RF27: o instalador deixa o plugin visível em cada perfil (symlink em `~/.hermes/profiles/*/plugins/`) e configura
+  `plugins.entries.habblaud.allow_gateway_injection: true`, `security.approval.transport: habblaud` e
+  `security.approval.transport_fallback: builtin` em cada perfil; o `uninstall` limpa as três chaves e os symlinks.
 - RF28: o terminal do subagente usa o tracker filho (`hermes:<perfil>:<pai>:<filho>`) e os eventos da sessão filha.
 - RF29: o endpoint `GET /api/hermes/sessions` lista as sessões principais no escritório para o plugin buscar a caixa;
   é local e não expõe conversa.
