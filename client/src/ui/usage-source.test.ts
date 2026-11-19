@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
+import { HERMES_GROUP } from './account-filter';
 import { cardState, codexUsageNote, hermesUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
@@ -81,5 +82,7 @@ describe('cartão de uso de uma conta do Hermes', () => {
     expect(hermesUsageNote(hermes())).toBe('O Hermes não informa limites de plano: os tokens de cada sessão aparecem no agente.');
     expect(hermesUsageNote({})).toBe('');
     expect(usageSubtitle(hermes())).toBe('~/.hermes/profiles/developer');
+    // O cartão do grupo Hermes não repete a pasta (o topo mostra um cartão só).
+    expect(usageSubtitle({ ...hermes(), id: HERMES_GROUP })).toBe('');
   });
 });

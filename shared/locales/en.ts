@@ -3337,6 +3337,10 @@ export const EN: Readonly<Record<string, string>> = {
   "Filtrar perfis do Hermes": "Filter Hermes profiles",
   "Todos os perfis": "All profiles",
   "padrão": "default",
-  "Ligue o Hermes no topo para filtrar por perfil": "Turn Hermes on at the top to filter by profile",
   "Filtrar os agentes do Hermes por perfil": "Filter Hermes agents by profile",
+  "Perfis do Hermes": "Hermes profiles",
+  "Nenhum perfil": "No profiles",
+  "perfil": "profile",
+  "perfis": "profiles",
+  "Nenhum perfil do Hermes visível": "No Hermes profiles visible",
 };

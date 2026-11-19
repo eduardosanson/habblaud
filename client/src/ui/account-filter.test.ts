@@ -6,7 +6,7 @@ import {
   HERMES_GROUP,
   hermesGroupAccount,
   isAccountHidden,
-  selectedHermesProfile,
+  selectedHermesProfiles,
 } from './account-filter';
 
 function account(id: string, provider: AccountInfo['provider'], name = id): AccountInfo {
@@ -34,24 +34,24 @@ describe('filtro de contas com o Hermes agrupado', () => {
     expect(filterAccounts([])).toEqual([]);
   });
 
-  it('o select escolhe um perfil; os outros ficam ocultos', () => {
-    const hidden = effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfile: 'developer' });
+  it('a seleção escolhe um ou mais perfis; os outros ficam ocultos', () => {
+    const hidden = effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfiles: ['developer'] });
     expect([...hidden].sort()).toEqual(['default', 'spec-writer']);
-    expect(selectedHermesProfile(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfile: 'developer' })).toBe('developer');
-    expect(selectedHermesProfile(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfile: 'sumiu' })).toBe('');
+    expect(selectedHermesProfiles(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfiles: ['developer'] })).toEqual(['developer']);
+    expect(selectedHermesProfiles(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfiles: ['sumiu'] })).toEqual([]);
     // Perfil inválido (sumiu): todos os perfis voltam.
-    expect(effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfile: 'sumiu' }).size).toBe(0);
+    expect(effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: [], hideHermes: false, hermesProfiles: ['sumiu'] }).size).toBe(0);
   });
 
   it('o grupo desligado oculta todos os perfis, sem mexer nas outras contas', () => {
-    const hidden = effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: ['.claude'], hideHermes: true, hermesProfile: 'developer' });
+    const hidden = effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: ['.claude'], hideHermes: true, hermesProfiles: ['developer'] });
     expect([...hidden].sort()).toEqual(['.claude', 'default', 'developer', 'spec-writer']);
-    expect(isAccountHidden(ACCOUNTS, { hiddenAccounts: [], hideHermes: true, hermesProfile: '' }, 'default')).toBe(true);
-    expect(isAccountHidden(ACCOUNTS, { hiddenAccounts: [], hideHermes: true, hermesProfile: '' }, '.codex')).toBe(false);
+    expect(isAccountHidden(ACCOUNTS, { hiddenAccounts: [], hideHermes: true, hermesProfiles: [] }, 'default')).toBe(true);
+    expect(isAccountHidden(ACCOUNTS, { hiddenAccounts: [], hideHermes: true, hermesProfiles: [] }, '.codex')).toBe(false);
   });
 
   it('ids antigos de perfis em hiddenAccounts são ignorados (o grupo manda)', () => {
-    const hidden = effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: ['developer', 'spec-writer', '.claude'], hideHermes: false, hermesProfile: '' });
+    const hidden = effectiveHiddenAccounts(ACCOUNTS, { hiddenAccounts: ['developer', 'spec-writer', '.claude'], hideHermes: false, hermesProfiles: [] });
     expect([...hidden]).toEqual(['.claude']);
   });
 });

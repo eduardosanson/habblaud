@@ -1460,6 +1460,8 @@
 }
 
 .ui-side__head {
+  position: relative;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1541,26 +1543,102 @@
   gap: 6px;
 }
 
-/* Hermes é um chip só no topo; o select escolhe o perfil. */
+/* Hermes é um chip só no topo; o picker abaixo escolhe um ou mais perfis. */
 .ui-side__filters {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.ui-acc-select {
+.ui-acc-picker {
+  position: relative;
+  z-index: 2;
+}
+
+.ui-acc-picker__btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
-  height: 26px;
-  padding: 0 7px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--ui-line);
   border-radius: 7px;
   background: var(--ui-bg-soft);
   color: inherit;
   font-size: 12px;
+  text-align: left;
 }
 
-.ui-acc-select:disabled {
-  opacity: 0.45;
+.ui-acc-picker__btn:hover {
+  background: var(--ui-bg-hover);
+}
+
+.ui-acc-picker__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-acc-picker__chevron {
+  display: block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  color: var(--ui-muted);
+  transition: transform 0.15s;
+}
+
+.ui-acc-picker.is-open .ui-acc-picker__chevron {
+  transform: rotate(180deg);
+}
+
+.ui-acc-picker__panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 8px;
+  background: var(--ui-bg-solid);
+  box-shadow:
+    0 12px 32px rgba(5, 7, 12, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  scrollbar-width: thin;
+}
+
+.ui-acc-picker__actions {
+  display: flex;
+  gap: 12px;
+  padding: 4px 7px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.ui-acc-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ui-acc-picker__row:hover {
+  background: var(--ui-bg-hover);
+}
+
+.ui-acc-picker__row input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--ui-accent);
 }
 
 .ui-acc-filter {

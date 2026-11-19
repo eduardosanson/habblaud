@@ -11,8 +11,8 @@ export interface AccountFilterPrefs {
   hiddenAccounts: readonly string[];
   /** Grupo Hermes desligado no topo. */
   hideHermes: boolean;
-  /** Perfil do Hermes escolhido no select ('' = todos). */
-  hermesProfile: string;
+  /** Perfis do Hermes escolhidos (vazio = todos). */
+  hermesProfiles: readonly string[];
 }
 
 /** Conta sintética do grupo Hermes (chip "H", nome "Hermes"). */
@@ -50,14 +50,16 @@ export function filterAccounts(accounts: readonly AccountInfo[]): AccountInfo[] 
   return out;
 }
 
-/** Perfil escolhido no select, se ele ainda existe; senão '' (todos). */
-export function selectedHermesProfile(accounts: readonly Pick<AccountInfo, 'id' | 'provider'>[], prefs: AccountFilterPrefs): string {
-  if (!prefs.hermesProfile) return '';
-  return accounts.some((a) => isHermes(a) && a.id === prefs.hermesProfile) ? prefs.hermesProfile : '';
+/** Perfis escolhidos que ainda existem (vazio = todos). */
+export function selectedHermesProfiles(accounts: readonly Pick<AccountInfo, 'id' | 'provider'>[], prefs: AccountFilterPrefs): string[] {
+  const wanted = prefs.hermesProfiles ?? [];
+  if (!wanted.length) return [];
+  const ids = new Set(accounts.filter((a) => isHermes(a)).map((a) => a.id));
+  return wanted.filter((id) => ids.has(id));
 }
 
 /**
- * Conjunto efetivo de contas ocultas: as escolhidas à mão + os perfis do Hermes fora do select (ou todos,
+ * Conjunto efetivo de contas ocultas: as escolhidas à mão + os perfis do Hermes fora da seleção (ou todos,
  * quando o grupo está desligado). Ids antigos de perfis do Hermes em `hiddenAccounts` são ignorados: o grupo
  * manda, e `hiddenAccounts` guarda no máximo 20 contas.
  */
@@ -70,8 +72,8 @@ export function effectiveHiddenAccounts(
   if (prefs.hideHermes) {
     for (const id of hermesIds) hidden.add(id);
   } else {
-    const selected = selectedHermesProfile(accounts, prefs);
-    if (selected) for (const id of hermesIds) if (id !== selected) hidden.add(id);
+    const selected = selectedHermesProfiles(accounts, prefs);
+    if (selected.length) for (const id of hermesIds) if (!selected.includes(id)) hidden.add(id);
   }
   return hidden;
 }

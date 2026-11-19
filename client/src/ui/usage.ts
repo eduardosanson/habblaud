@@ -8,6 +8,7 @@
 // a idade ("há 12 min") fica sempre à mostra. Sem cota nem créditos ("sem cota") nunca vira 0%. Não há o que
 // instalar para o uso: "Como funciona" abre a ajuda na seção do Codex. Sem Opus/Sonnet nem e-mail (só o plano).
 import type { AccountInfo } from '../../../shared/types';
+import { filterAccounts, HERMES_GROUP } from './account-filter';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
@@ -175,11 +176,12 @@ export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pr
   return state === 'stale' || ((isCodex(a) || isOpenCode(a)) && state !== 'empty');
 }
 
-/** Linha embaixo do nome: e-mail; no Codex/OpenCode (sem e-mail), o plano; nas outras, a pasta. */
-export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'>): string {
+/** Linha embaixo do nome: e-mail; no Codex/OpenCode (sem e-mail), o plano; nas outras, a pasta (o grupo Hermes não tem). */
+export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'> & { id?: string }): string {
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
   if (isOpenCode(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'OpenCode';
+  if (isHermes(a) && a.id === HERMES_GROUP) return '';
   return a.configDir;
 }
 
@@ -236,12 +238,14 @@ export class UsageCards {
 
   render(): void {
     const accounts = this.ctx.store.snapshot?.accounts ?? [];
-    this.list.sync(accounts);
-    this.el.classList.toggle('is-empty', accounts.length === 0);
-    setStyleVar(this.el, '--count', String(accounts.length));
+    // O topo mostra uma conta por ferramenta; os perfis do Hermes viram um cartão só.
+    const shown = filterAccounts(accounts);
+    this.list.sync(shown);
+    this.el.classList.toggle('is-empty', shown.length === 0);
+    setStyleVar(this.el, '--count', String(shown.length));
     // Medir força o layout da página, e o render roda a cada quadro no replay: só quando as contas mudam (a largura da
     // janela fica com o ResizeObserver do construtor).
-    const key = accounts.map((a) => a.id).join('|');
+    const key = shown.map((a) => a.id).join('|');
     if (key !== this.fitKey) {
       this.fitKey = key;
       this.fit();
@@ -362,7 +366,7 @@ export class UsageCards {
     setText(r.name, a.name);
     updateProviderTag(r.prov, a.provider ?? 'claude', a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : a.provider === 'hermes' ? ' (Hermes)' : '']));
+    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : '']));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -432,7 +436,7 @@ export class UsageCards {
     if (a.email) rows.push(['E-mail', a.email]);
     if (a.organization) rows.push([tr('Organização'), a.organization]);
     if (a.plan) rows.push([tr('Plano'), a.plan]);
-    rows.push([tr('Pasta'), a.configDir]);
+    if (a.id !== HERMES_GROUP) rows.push([tr('Pasta'), a.configDir]);
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
     if (u && (u.fiveHour || u.sevenDay)) {

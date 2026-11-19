@@ -2,7 +2,7 @@
 import type { AccountInfo, AgentInfo } from '../../../shared/types';
 import { roomTheme } from '../art';
 import type { UiComponent, UiContext } from './context';
-import { effectiveHiddenAccounts, filterAccounts, HERMES_GROUP, selectedHermesProfile } from './account-filter';
+import { effectiveHiddenAccounts, filterAccounts, HERMES_GROUP, selectedHermesProfiles } from './account-filter';
 import { moveAgent, orderAgents } from './agentorder';
 import { moveRoom, orderRooms } from './roomorder';
 import { h, iconButton, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle } from './dom';
@@ -44,7 +44,13 @@ export class Sidebar implements UiComponent {
   private filters: HTMLElement;
   private filtersWrap: HTMLElement;
   private filterList: KeyedList<AccountInfo, HTMLButtonElement>;
-  private hermesSelect: HTMLSelectElement;
+  private hermesPicker: HTMLElement;
+  private hermesButton: HTMLButtonElement;
+  private hermesPanel: HTMLElement;
+  private hermesLabel: HTMLElement;
+  private hermesBoxes = new Map<string, HTMLInputElement>();
+  private hermesAccounts: AccountInfo[] = [];
+  private hermesOpen = false;
   private hermesSig = '';
   private scroller: HTMLElement;
   private rooms: KeyedList<RoomGroup>;
@@ -116,9 +122,38 @@ export class Sidebar implements UiComponent {
         b.classList.toggle('is-off', hidden);
       },
     });
-    this.hermesSelect = h('select', { class: 'ui-acc-select', attrs: { 'aria-label': tr('Filtrar perfis do Hermes') } });
-    this.hermesSelect.addEventListener('change', () => this.ctx.updatePrefs({ hermesProfile: this.hermesSelect.value, hideHermes: false }));
-    this.filtersWrap = h('div', { class: 'ui-side__filters' }, this.filters, this.hermesSelect);
+    this.hermesLabel = h('span', { class: 'ui-acc-picker__label' });
+    const chevron = h('span', { class: 'ui-acc-picker__chevron', attrs: { 'aria-hidden': 'true' } });
+    chevron.innerHTML = ICONS.chevronDown;
+    this.hermesButton = h(
+      'button',
+      { class: 'ui-acc-picker__btn', type: 'button', attrs: { 'aria-haspopup': 'true', 'aria-expanded': 'false', 'aria-label': tr('Filtrar perfis do Hermes') } },
+      this.hermesLabel,
+      chevron,
+    );
+    this.hermesButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setHermesOpen(!this.hermesOpen);
+    });
+    this.hermesPanel = h('div', { class: 'ui-acc-picker__panel', hidden: true, attrs: { role: 'group', 'aria-label': tr('Perfis do Hermes') } });
+    this.hermesPanel.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      this.setHermesOpen(false);
+      this.hermesButton.focus();
+    });
+    this.hermesPicker = h('div', { class: 'ui-acc-picker' }, this.hermesButton, this.hermesPanel);
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (!this.hermesOpen) return;
+        const target = e.target as Node | null;
+        if (target && this.hermesPicker.contains(target)) return;
+        this.setHermesOpen(false);
+      },
+      true,
+    );
+    this.filtersWrap = h('div', { class: 'ui-side__filters' }, this.filters, this.hermesPicker);
 
     this.scroller = h('div', { class: 'ui-side__scroll' });
     const list = h('div', { class: 'ui-rooms', role: 'list', attrs: { 'aria-label': tr('Salas') } });
@@ -138,7 +173,7 @@ export class Sidebar implements UiComponent {
         click: () => {
           this.input.value = '';
           this.query = '';
-          this.ctx.updatePrefs({ hiddenAccounts: [], hideHermes: false, hermesProfile: '' });
+          this.ctx.updatePrefs({ hiddenAccounts: [], hideHermes: false, hermesProfiles: [] });
         },
       },
     });
@@ -166,7 +201,7 @@ export class Sidebar implements UiComponent {
     const hidden = effectiveHiddenAccounts(accounts, this.ctx.prefs);
     this.filterList.sync(accounts.length > 1 ? filterAccounts(accounts) : []);
     setHidden(this.filtersWrap, accounts.length <= 1);
-    this.renderHermesSelect(hermes);
+    this.renderHermesPicker(hermes);
 
     // Ordem das salas escolhida pelo usuário (arrastando o cabeçalho da sala).
     const groups = orderRooms(groupRooms(snap, { query: this.query, hiddenAccounts: hidden }), (g) => g.room.id);
@@ -205,27 +240,71 @@ export class Sidebar implements UiComponent {
     }
   }
 
-  private renderHermesSelect(hermes: readonly AccountInfo[]): void {
-    const selected = selectedHermesProfile(hermes, this.ctx.prefs);
-    const sig = hermes.map((a) => `${a.id}:${a.name}`).join('|');
+  private renderHermesPicker(hermes: readonly AccountInfo[]): void {
+    this.hermesAccounts = [...hermes];
+    setHidden(this.hermesPicker, hermes.length <= 1);
+    if (hermes.length <= 1 && this.hermesOpen) this.setHermesOpen(false);
+    const prefs = this.ctx.prefs;
+    const selected = selectedHermesProfiles(hermes, prefs);
+    const all = !prefs.hideHermes && selected.length === 0;
+    const none = prefs.hideHermes;
+    const label = none
+      ? tr('Nenhum perfil')
+      : all
+        ? tr('Todos os perfis')
+        : selected.length === 1
+          ? this.profileLabel(selected[0])
+          : plural(selected.length, tr('perfil'), tr('perfis'));
+    setText(this.hermesLabel, label);
+    setTitle(this.hermesButton, none ? tr('Nenhum perfil do Hermes visível') : tr('Filtrar os agentes do Hermes por perfil'));
+    const sig = hermes.map((a) => `${a.id}\u0001${a.name}`).join('|');
     if (sig !== this.hermesSig) {
       this.hermesSig = sig;
-      const options: HTMLOptionElement[] = [h('option', { text: tr('Todos os perfis') })];
-      options[0].value = '';
-      for (const account of hermes) {
-        const option = h('option', { text: account.id === 'default' ? tr('padrão') : account.id });
-        option.value = account.id;
-        options.push(option);
-      }
-      this.hermesSelect.replaceChildren(...options);
+      this.hermesBoxes.clear();
+      const actions = h(
+        'div',
+        { class: 'ui-acc-picker__actions' },
+        h('button', { class: 'ui-link-btn', type: 'button', text: tr('Todos'), on: { click: () => this.pickAllHermes() } }),
+        h('button', { class: 'ui-link-btn', type: 'button', text: tr('Nenhum'), on: { click: () => this.pickNoHermes() } }),
+      );
+      const rows = hermes.map((account) => {
+        const box = h('input', { type: 'checkbox' });
+        box.addEventListener('change', () => this.pickHermesProfiles());
+        this.hermesBoxes.set(account.id, box);
+        return h('label', { class: 'ui-acc-picker__row' }, box, h('span', { text: this.profileLabel(account.id) }));
+      });
+      this.hermesPanel.replaceChildren(actions, ...rows);
     }
-    this.hermesSelect.value = selected;
-    this.hermesSelect.disabled = this.ctx.prefs.hideHermes;
-    setHidden(this.hermesSelect, hermes.length <= 1);
-    setTitle(
-      this.hermesSelect,
-      this.ctx.prefs.hideHermes ? tr('Ligue o Hermes no topo para filtrar por perfil') : tr('Filtrar os agentes do Hermes por perfil'),
-    );
+    for (const [id, box] of this.hermesBoxes) box.checked = !none && (all || selected.includes(id));
+  }
+
+  private setHermesOpen(open: boolean): void {
+    this.hermesOpen = open;
+    this.hermesPanel.hidden = !open;
+    this.hermesPicker.classList.toggle('is-open', open);
+    setAttr(this.hermesButton, 'aria-expanded', String(open));
+    if (open) this.hermesPanel.querySelector<HTMLInputElement>('input')?.focus();
+  }
+
+  private profileLabel(id: string): string {
+    return id === 'default' ? tr('padrão') : id;
+  }
+
+  private pickAllHermes(): void {
+    this.ctx.updatePrefs({ hideHermes: false, hermesProfiles: [] });
+  }
+
+  private pickNoHermes(): void {
+    this.ctx.updatePrefs({ hideHermes: true, hermesProfiles: [] });
+  }
+
+  private pickHermesProfiles(): void {
+    const ids = this.hermesAccounts.map((a) => a.id);
+    const checked = ids.filter((id) => this.hermesBoxes.get(id)?.checked);
+    this.ctx.updatePrefs({
+      hideHermes: checked.length === 0,
+      hermesProfiles: checked.length === 0 || checked.length === ids.length ? [] : checked,
+    });
   }
 
   private toggleAccount(id: string): void {
