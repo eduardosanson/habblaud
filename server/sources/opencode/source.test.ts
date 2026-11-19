@@ -190,6 +190,18 @@ describe('fonte do OpenCode: boot', () => {
     await ctx.source.boot();
     expect(ctx.agents().filter((a) => a.kind === 'main')).toHaveLength(1);
   });
+
+  it('messageStream existe para o principal e para o subagente (sessão filha) e só para quem está no escritório', async () => {
+    const ctx = setup();
+    ctx.client.sessions = [SESSION, CHILD];
+    await ctx.source.boot();
+    const main = ctx.source.messageStream('opencode:ses_1');
+    const sub = ctx.source.messageStream('opencode:ses_2');
+    expect(main).toBeDefined();
+    expect(sub).toBeDefined();
+    expect(main).not.toBe(sub);
+    expect(ctx.source.messageStream('opencode:ses_que_nao_esta')).toBeUndefined();
+  });
 });
 
 describe('fonte do OpenCode: eventos', () => {

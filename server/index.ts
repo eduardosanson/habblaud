@@ -39,6 +39,7 @@ import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
 import { OpenCodeSource } from './sources/opencode/source';
+import { OpenCodeHistory } from './sources/opencode/history';
 import { openCodeServiceFile } from './sources/opencode/client';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
@@ -208,15 +209,29 @@ if (worldUplink && worldSocial) {
   worldUplink.attachOwner(worldSocial);
 }
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
-// Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
+// Cada agente com o parser da ferramenta dele (o do Claude Code por padrão) ou, no OpenCode, com o stream da API.
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({
+      office,
+      transcriptPathOf: (id) => agents.transcriptPathOf(id),
+      parserFor: (id) => agents.parserFor(id),
+      messageStreamFor: (id) => agents.messageStreamFor(id),
+    })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const history = config.terminal
   ? new HistorySet([new SessionHistory({ accounts: () => accounts.entries(), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) })])
   : undefined;
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
+if (history && opencode) {
+  history.add(
+    new OpenCodeHistory({
+      accounts: () => accounts.entriesOf('opencode'),
+      client: () => opencode.api(),
+      openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid),
+    }),
+  );
+}
 // Entregas: o fim de cada pedido, lido dos transcripts do histórico (mesma trava do terminal). Os arquivos entregues
 // são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.
 const deliveries = history

@@ -34,6 +34,7 @@ function fakeSource(provider: Provider, opts: Partial<AgentSource> & { paths?: R
     sources: opts.sources ?? (() => [{ label: `.${provider}`, path: `/x/.${provider}`, sessions: 1, ok: true }]),
     transcriptPathOf: (id) => paths[id],
     ...(opts.terminalParser ? { terminalParser: opts.terminalParser } : {}),
+    ...(opts.messageStream ? { messageStream: opts.messageStream } : {}),
   };
 }
 
@@ -68,6 +69,30 @@ describe('SourceSet', () => {
       const entries = set.parserFor(id).push(CLAUDE_LINE);
       expect(entries).toMatchObject([{ kind: 'user', text: 'oi' }]);
     }
+  });
+
+  it('stream de mensagens por agente (OpenCode): o da fonte dona, um novo a cada chamada', () => {
+    const make = () => ({
+      load: async () => ({ agentId: 'oc:1', entries: [], truncated: false }),
+      poll: async () => ({}),
+    });
+    let calls = 0;
+    const opencode = fakeSource('opencode', {
+      messageStream: (id) => {
+        if (id !== 'oc:1') return undefined;
+        calls++;
+        return make();
+      },
+    });
+    const set = new SourceSet([fakeSource('claude', { paths: { 'c:1': '/t/c1.jsonl' } }), opencode]);
+    const s1 = set.messageStreamFor('oc:1');
+    const s2 = set.messageStreamFor('oc:1');
+    expect(s1).toBeDefined();
+    expect(s1).not.toBe(s2);
+    expect(calls).toBe(2);
+    // Claude/Codex (sem stream) e id desconhecido continuam no caminho de arquivo.
+    expect(set.messageStreamFor('c:1')).toBeUndefined();
+    expect(set.messageStreamFor('ninguem')).toBeUndefined();
   });
 
   it('start na ordem (as síncronas terminam ali); a falha de uma fonte não derruba as outras', async () => {

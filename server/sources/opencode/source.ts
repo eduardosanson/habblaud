@@ -15,6 +15,7 @@ import { describeCommand, maskSecrets, truncate } from '../../../shared/activity
 import { errMsg, log } from '../../log';
 import type { Office, ShellDoneInput, TranscriptSummary } from '../../model/office';
 import type { AgentSource } from '../source';
+import type { MessageStream } from '../stream';
 import {
   isLoopbackEndpoint,
   OpenCodeClient,
@@ -38,6 +39,7 @@ import {
   sessionTitle,
   type OpenCodeSession,
 } from './map';
+import { createOpenCodeMessageStream } from './terminal';
 import { tr } from '../../../shared/i18n';
 
 export interface OpenCodeSourceOptions {
@@ -175,9 +177,31 @@ export class OpenCodeSource implements AgentSource {
     ];
   }
 
-  /** Sem transcript de arquivo: o terminal/histórico do OpenCode fica para a fase seguinte. */
+  /** Sem transcript de arquivo: a conversa vem da API (messageStream) e o histórico, do OpenCodeHistory. */
   transcriptPathOf(): string | undefined {
     return undefined;
+  }
+
+  /**
+   * Conversa ao vivo de um agente (principal ou subagente): a sessão do OpenCode correspondente, lida pela API.
+   * Stream novo a cada chamada do terminal; undefined se o agente não está mais no escritório ou o cliente não subiu.
+   */
+  messageStream(agentId: string): MessageStream | undefined {
+    const client = this.client;
+    const t = this.trackers.get(agentId);
+    if (!client || !t) return undefined;
+    return createOpenCodeMessageStream({
+      client,
+      sessionId: t.session.id,
+      streamId: agentId,
+      intervalMs: 1_000,
+      ...(t.session.cwd ? { cwd: t.session.cwd } : {}),
+    });
+  }
+
+  /** O cliente já resolvido (o histórico usa as mesmas rotas); undefined antes do boot ou sem serviço. */
+  api(): OpenCodeClientLike | undefined {
+    return this.client;
   }
 
   terminalParser(): undefined {

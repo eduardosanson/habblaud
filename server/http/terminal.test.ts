@@ -12,6 +12,7 @@ import { isLoopbackBind, loadConfig, terminalOffReason } from '../config';
 import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
+import type { MessageStream } from '../sources/stream';
 import type { TerminalParser } from '../sources/terminal';
 import { ClaudeWatcher, encodeCwd } from '../sources/watcher';
 import { appendLines, L, tempDir, writeLines } from '../test/fixtures';
@@ -489,6 +490,85 @@ describe('terminal: transporte', () => {
 });
 
 // ------------------------------------------------------------------ demo
+
+describe('terminal: fonte assíncrona (MessageStream)', () => {
+  it('init e append vêm do stream; nada de transcript em arquivo', async () => {
+    let fresh: TerminalEntry[] = [];
+    const stream: MessageStream = {
+      intervalMs: 20,
+      load: async () => ({ agentId: MAIN, entries: [{ kind: 'user', id: 'u1', at: 1, text: 'oi' }], truncated: false }),
+      poll: async () => {
+        const append = fresh;
+        fresh = [];
+        return { append };
+      },
+    };
+    const env = await serve({ streams: { messageStreamFor: (id) => (id === MAIN ? stream : undefined) } });
+    try {
+      const s = await open(env.base, route(MAIN));
+      expect(s.status).toBe(200);
+      await waitFor(() => expect(inits(s)).toHaveLength(1));
+      expect(inits(s)[0].entries.map((e) => e.id)).toEqual(['u1']);
+      fresh = [{ kind: 'assistant', id: 'a1', at: 2, text: 'pronto' }];
+      await waitFor(() => expect(appendIds(s)).toEqual(['a1']));
+      s.close();
+      await waitFor(() => expect(env.terminals.size).toBe(0));
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('stream que falha antes do init: o status do serviço vira JSON (404), sem abrir SSE', async () => {
+    const env = await serve({
+      streams: {
+        messageStreamFor: (id) =>
+          id === MAIN
+            ? {
+                load: async () => {
+                  throw Object.assign(new Error('OpenCode respondeu 404'), { status: 404 });
+                },
+                poll: async () => ({}),
+              }
+            : undefined,
+      },
+    });
+    try {
+      const r = await open(env.base, route(MAIN));
+      expect(r.status).toBe(404);
+      expect(r.headers['content-type']).toMatch(/^application\/json/);
+      expect(JSON.parse(r.body)).toEqual({ error: 'OpenCode respondeu 404' });
+      expect(env.terminals.size).toBe(0);
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('um poll lento não empilha: o próximo tick espera o anterior', async () => {
+    let polls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((ok) => (release = ok));
+    const stream: MessageStream = {
+      intervalMs: 5,
+      load: async () => ({ agentId: MAIN, entries: [], truncated: false }),
+      poll: async () => {
+        polls++;
+        await gate;
+        return {};
+      },
+    };
+    const env = await serve({ streams: { messageStreamFor: (id) => (id === MAIN ? stream : undefined) } });
+    try {
+      const s = await open(env.base, route(MAIN));
+      await waitFor(() => expect(inits(s)).toHaveLength(1));
+      await vi.waitFor(() => expect(polls).toBe(1), { timeout: 1_000, interval: 10 });
+      release();
+      await vi.waitFor(() => expect(polls).toBeGreaterThan(1), { timeout: 1_000, interval: 10 });
+      s.close();
+    } finally {
+      await env.close();
+    }
+  });
+});
 
 describe('terminal: agentes do demo', () => {
   it('conversa fictícia (demoTerminalEntries): init com o id do agente', async () => {

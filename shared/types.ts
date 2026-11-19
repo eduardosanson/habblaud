@@ -542,7 +542,7 @@ export interface RecentSession {
   /** Primeira e última atividade com horário (epoch ms); `lastAt` cai no mtime do arquivo sem horário no fim. */
   firstAt?: number;
   lastAt: number;
-  /** Tamanho do transcript em bytes. */
+  /** Tamanho do transcript em bytes; 0 quando a ferramenta não tem arquivo (OpenCode). */
   size: number;
   /** A sessão ainda está aberta: `agentId` é o agente principal dela no escritório. */
   open: boolean;

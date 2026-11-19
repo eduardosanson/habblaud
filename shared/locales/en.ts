@@ -3301,4 +3301,7 @@ export const EN: Readonly<Record<string, string>> = {
   "OpenCode: serviço local não encontrado em {0}.": "OpenCode: local service not found at {0}.",
   "OpenCode: o service.json não aponta para o próprio computador.": "OpenCode: service.json does not point to this computer.",
   "OpenCode: {0} ({1})": "OpenCode: {0} ({1})",
+  "[arquivo: {0}]": "[file: {0}]",
+  "anexo": "attachment",
+  "conversa do OpenCode indisponível no momento": "OpenCode conversation unavailable right now",
 };

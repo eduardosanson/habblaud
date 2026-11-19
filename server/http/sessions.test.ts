@@ -300,6 +300,40 @@ describe('histórico de sessões: outra ferramenta', () => {
       await env.close();
     }
   });
+
+  it('sessão sem arquivo (OpenCode): o terminal vem do MessageStream, com o streamId do histórico', async () => {
+    const OID = 'ses_e0e0637e8ffeA2xfzl73RN5se3';
+    const opencode: HistoryProvider = {
+      provider: 'opencode',
+      hasAccount: (a) => a === 'opencode',
+      list: async () => [{ account: 'opencode', provider: 'opencode', sessionId: OID, projectDir: 'loja', lastAt: Date.now() + 60_000, size: 0, open: false }],
+      resolve: (_account, sessionId) =>
+        sessionId === OID
+          ? {
+              stream: () => ({
+                intervalMs: 20,
+                load: async () => ({ agentId: `session:opencode:${OID}`, entries: [{ kind: 'user', id: 'oc-u1', at: 0, text: 'oi do OpenCode' }], truncated: false }),
+                poll: async () => ({}),
+              }),
+            }
+          : { status: 404, error: 'sessão não encontrada' },
+    };
+    const env = await serve({ extra: () => opencode });
+    try {
+      const body = JSON.parse((await request(env.base, '/api/sessions/recent')).body) as RecentSessionsResponse;
+      expect(body.sessions[0]).toMatchObject({ account: 'opencode', provider: 'opencode', sessionId: OID, size: 0 });
+      const s = await request(env.base, terminalRoute('opencode', OID));
+      expect(s.status).toBe(200);
+      await waitFor(() => expect(s.events.filter((e) => e.event === 'init')).toHaveLength(1));
+      const init = s.events[0].data as TerminalInit;
+      expect(init.agentId).toBe(`session:opencode:${OID}`);
+      expect(init.entries).toMatchObject([{ kind: 'user', text: 'oi do OpenCode' }]);
+      s.close();
+      expect((await request(env.base, terminalRoute('opencode', '00000000-0000-4000-8000-000000000999'))).status).toBe(404);
+    } finally {
+      await env.close();
+    }
+  });
 });
 
 describe('histórico de sessões: SSE da sessão encerrada', () => {
