@@ -2,6 +2,7 @@
 // timestamps. Sem I/O e sem Office aqui; o HermesSource aplica no escritório e os testes cobrem o que cada evento vira.
 import type { ActivityDescription } from '../../../shared/activity';
 import { describeCommand, describeTool, maskSecrets, truncate } from '../../../shared/activity';
+import { toolView } from '../terminal';
 import { tr } from '../../../shared/i18n';
 
 type Rec = Record<string, unknown>;
@@ -114,4 +115,59 @@ export function hermesUsageId(ev: Rec): string | undefined {
 /** O Hermes chama a mesma ferramenta de vários jeitos; o nome vai como veio, só cortado. */
 export function hermesToolName(ev: Rec): string {
   return truncate(str(ev.tool_name) ?? tr('ferramenta'), 80);
+}
+
+/** Texto de uma mensagem do Hermes (string ou lista de partes); sem system prompt e cortado. */
+export function hermesText(raw: unknown, max = 20_000): string {
+  if (typeof raw === 'string') return truncate(maskSecrets(raw), max);
+  if (!Array.isArray(raw)) return '';
+  const parts: string[] = [];
+  for (const item of raw) {
+    const part = rec(item);
+    if (!part) continue;
+    if (part.type === 'text' && typeof part.text === 'string') parts.push(part.text);
+    else if (part.type === 'image') parts.push(tr('[imagem]'));
+  }
+  return truncate(maskSecrets(parts.join('\n')), max);
+}
+
+/** Argumentos de uma ferramenta do Hermes no formato do terminal do Claude Code. */
+export function hermesToolView(tool: string, rawInput: unknown, cwd?: string): ReturnType<typeof toolView> {
+  const input = rec(rawInput) ?? {};
+  const path = str(input.path) ?? str(input.file_path) ?? str(input.filePath) ?? str(input.absolutePath);
+  const command = str(input.command) ?? str(input.cmd);
+  switch (tool) {
+    case 'terminal':
+    case 'process':
+    case 'execute_code':
+      return toolView('Bash', { command }, cwd);
+    case 'read_file':
+    case 'skill_view':
+      return toolView('Read', { file_path: path }, cwd);
+    case 'write_file':
+      return toolView('Write', { file_path: path, content: input.content }, cwd);
+    case 'edit':
+    case 'patch':
+    case 'skill_manage':
+      return toolView('Edit', { file_path: path, old_string: input.oldString ?? input.old_string, new_string: input.newString ?? input.new_string ?? input.patch }, cwd);
+    case 'search_files':
+      return toolView('Grep', { pattern: input.pattern ?? input.query, path }, cwd);
+    case 'web_search':
+      return toolView('WebSearch', { query: input.query }, cwd);
+    case 'web_extract':
+    case 'browser_navigate':
+      return toolView('WebFetch', { url: input.url }, cwd);
+    case 'delegate_task':
+      return toolView('Task', { description: input.description ?? input.goal, prompt: input.prompt }, cwd);
+    case 'todowrite':
+      return toolView('TodoWrite', { todos: input.todos }, cwd);
+    case 'todoread':
+      return toolView('TaskList', {}, cwd);
+    case 'skill':
+      return toolView('Skill', { skill: input.name ?? input.id }, cwd);
+    case 'question':
+      return toolView('AskUserQuestion', { questions: input.questions }, cwd);
+    default:
+      return toolView(tool, input, cwd);
+  }
 }

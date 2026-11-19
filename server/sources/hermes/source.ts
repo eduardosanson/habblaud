@@ -8,19 +8,24 @@
 // para a sessão do Hermes e um evento inválido é ignorado.
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { Activity, AgentStatus, SourceInfo } from '../../../shared/types';
+import type { Activity, AgentStatus, SourceInfo, TerminalEntry, TerminalInit } from '../../../shared/types';
 import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
 import type { AccountsService } from '../../accounts/service';
 import { maskSecrets, truncate } from '../../../shared/activity';
+import { hash32 } from '../../../shared/hash';
 import type { Office, TranscriptSummary } from '../../model/office';
 import type { AgentSource } from '../source';
+import type { MessageDelta, MessageStream } from '../stream';
+import { marked, prepare, RESULT_MAX, RESULT_MAX_LINES, TEXT_MAX } from '../terminal';
 import {
   eventAt,
   eventSessionId,
   eventType,
   hermesActivity,
+  hermesText,
   hermesTokens,
   hermesToolName,
+  hermesToolView,
   hermesUsageId,
   str,
   type HermesEventBody,
@@ -38,6 +43,11 @@ export interface HermesSourceOptions {
   /** Intervalo da varredura de presença. */
   sweepMs?: number;
 }
+
+type Rec = Record<string, unknown>;
+type ToolEntry = Extract<TerminalEntry, { kind: 'tool' }>;
+type ResultEntry = Extract<TerminalEntry, { kind: 'result' }>;
+type SystemEntry = Extract<TerminalEntry, { kind: 'system' }>;
 
 interface Profile {
   name: string;
@@ -72,6 +82,10 @@ interface Tracker {
   usageIds: Set<string>;
   subSeq: number;
   subDone: boolean;
+  /** Conversa para o terminal (prompts, respostas, ferramentas e resultados), sem transcript em arquivo. */
+  terminal: Array<{ seq: number; entry: TerminalEntry }>;
+  termIds: Set<string>;
+  termSeq: number;
 }
 
 const EVENT_SEEN_MAX = 5_000;
@@ -95,6 +109,9 @@ const KNOWN_TYPES = new Set([
   'approval_request',
   'approval_response',
   'usage',
+  'history',
+  'user_message',
+  'assistant_message',
 ]);
 
 function profileName(raw: unknown): string {
@@ -140,9 +157,21 @@ export class HermesSource implements AgentSource {
     return [{ label: 'hermes', provider: 'hermes', path: first?.home ?? this.baseHome, sessions, ok: true }];
   }
 
-  /** Sem transcript de arquivo nesta fase: terminal/histórico do Hermes ficam para a próxima. */
+  /** Sem transcript de arquivo: a conversa vem dos eventos do plugin (messageStream) e o histórico ainda não existe. */
   transcriptPathOf(): string | undefined {
     return undefined;
+  }
+
+  /** Terminal ao vivo de um agente: o buffer de eventos do plugin, um stream novo por conexão. */
+  messageStream(agentId: string): MessageStream | undefined {
+    return this.trackers.has(agentId) ? new HermesTerminalStream(agentId, () => this.trackers.get(agentId)) : undefined;
+  }
+
+  /** Sessões principais no escritório (o plugin usa para buscar mensagens da caixa de entrada). */
+  sessions(): Array<{ profile: string; account: string; session: string }> {
+    return [...this.trackers.values()]
+      .filter((t) => t.kind === 'main' && t.inOffice)
+      .map((t) => ({ profile: t.profile, account: t.account, session: t.sessionId }));
   }
 
   /**
@@ -184,6 +213,15 @@ export class HermesSource implements AgentSource {
       case 'session_idle':
         this.setStatus(t, 'idle');
         return true;
+      case 'history':
+        this.history(t, ev, at);
+        return true;
+      case 'user_message':
+        this.userMessage(t, ev, at);
+        return true;
+      case 'assistant_message':
+        this.assistantMessage(t, ev, at);
+        return true;
       case 'tool_start':
         this.toolStart(t, ev, at);
         return true;
@@ -192,9 +230,11 @@ export class HermesSource implements AgentSource {
         return true;
       case 'approval_request':
         this.setStatus(t, 'waiting', this.waitingFor(ev));
+        this.systemEntry(t, `${t.key}:approval:${str(ev.request_id) ?? at}`, at, tr('Pedindo aprovação'), str(ev.command) ?? str(ev.description));
         return true;
       case 'approval_response':
         this.setStatus(t, 'working');
+        this.systemEntry(t, `${t.key}:approval-done:${str(ev.request_id) ?? at}`, at, ev.choice === 'deny' ? tr('Aprovação recusada') : tr('Aprovado'), undefined, ev.choice === 'deny' ? 'warn' : 'info');
         return true;
       case 'session_end':
       case 'session_finalize':
@@ -312,6 +352,9 @@ export class HermesSource implements AgentSource {
       usageIds: new Set(),
       subSeq: 0,
       subDone: false,
+      terminal: [],
+      termIds: new Set(),
+      termSeq: 0,
     };
     if (platform) t.platform = platform;
     if (model) t.model = model;
@@ -325,6 +368,7 @@ export class HermesSource implements AgentSource {
     t.lastSeenAt = Math.max(t.lastSeenAt, at);
     const failed = ev.failed === true || str(ev.turn_exit_reason)?.startsWith('error') === true;
     if (failed) this.addActivity(t, { id: `${t.key}:failed:${at}`, at, kind: 'error', icon: '⚠️', text: tr('A sessão falhou') });
+    this.systemEntry(t, `${t.key}:end:${at}`, at, failed ? tr('A sessão falhou') : tr('Sessão encerrada'), str(ev.turn_exit_reason));
     this.leave(t);
   }
 
@@ -391,6 +435,9 @@ export class HermesSource implements AgentSource {
       usageIds: new Set(),
       subSeq: 0,
       subDone: false,
+      terminal: [],
+      termIds: new Set(),
+      termSeq: 0,
     };
     this.trackers.set(childKey, t);
     this.bySession.set(this.sessionKey(profile, childSession), childKey);
@@ -421,6 +468,58 @@ export class HermesSource implements AgentSource {
     return true;
   }
 
+  // ---------------------------------------------------------------- terminal (eventos do plugin)
+
+  /** Histórico enviado no primeiro turno de uma sessão: só texto de user/assistant, sem system prompt. */
+  private history(t: Tracker, ev: Record<string, unknown>, at: number): void {
+    const messages = Array.isArray(ev.messages) ? ev.messages : [];
+    messages.slice(-100).forEach((raw, i) => {
+      const m = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : undefined;
+      const role = m?.role;
+      if (role !== 'user' && role !== 'assistant') return;
+      const text = hermesText(m?.content ?? m?.text);
+      if (!text.trim()) return;
+      const body = marked(prepare(text, TEXT_MAX));
+      if (!body) return;
+      const id = `${t.key}:h:${i}:${hash32(body)}`;
+      this.appendTerminal(t, { kind: role, id, at, text: body });
+    });
+  }
+
+  private userMessage(t: Tracker, ev: Record<string, unknown>, at: number): void {
+    const text = hermesText(ev.text ?? ev.user_message);
+    const body = marked(prepare(text, TEXT_MAX));
+    if (!body) return;
+    const key = str(ev.turn_id) ?? str(ev.event_id) ?? String(at);
+    this.appendTerminal(t, { kind: 'user', id: `${t.key}:u:${key}`, at, text: body });
+  }
+
+  private assistantMessage(t: Tracker, ev: Record<string, unknown>, at: number): void {
+    const text = hermesText(ev.text ?? ev.assistant_response);
+    const body = marked(prepare(text, TEXT_MAX));
+    if (!body) return;
+    const key = str(ev.turn_id) ?? str(ev.event_id) ?? String(at);
+    this.appendTerminal(t, { kind: 'assistant', id: `${t.key}:a:${key}`, at, text: body });
+  }
+
+  private systemEntry(t: Tracker, id: string, at: number, text: string, detail: string | undefined, level: 'info' | 'warn' | 'error' = 'info'): void {
+    const entry: SystemEntry = { kind: 'system', id, at, text: maskSecrets(text), level };
+    if (detail?.trim()) {
+      const d = marked(prepare(detail, RESULT_MAX));
+      if (d) entry.detail = d;
+    }
+    this.appendTerminal(t, entry);
+  }
+
+  /** Guarda uma entrada para o terminal (ids deduplicam; o buffer mantém as últimas 2.000). */
+  private appendTerminal(t: Tracker, entry: TerminalEntry): void {
+    if (t.termIds.has(entry.id)) return;
+    t.termIds.add(entry.id);
+    if (t.termIds.size > 2_000) t.termIds.delete(t.termIds.values().next().value as string);
+    t.terminal.push({ seq: ++t.termSeq, entry });
+    if (t.terminal.length > 2_000) t.terminal.splice(0, t.terminal.length - 2_000);
+  }
+
   // ---------------------------------------------------------------- ferramentas
 
   private toolStart(t: Tracker, ev: Record<string, unknown>, at: number): void {
@@ -437,17 +536,26 @@ export class HermesSource implements AgentSource {
     if (!fresh) return;
     const desc = hermesActivity(tool, ev.preview ?? ev.input);
     this.addActivity(t, { id: `${t.key}:tool:${id}`, at, tool, ...desc });
+    const view = hermesToolView(tool, ev.input ?? { command: ev.preview }, t.cwd);
+    const entry: ToolEntry = { kind: 'tool', id, at, tool, title: maskSecrets(view.title) };
+    if (view.input) {
+      entry.input = view.input;
+      entry.inputKind = view.inputKind;
+    }
+    this.appendTerminal(t, entry);
     this.applySummary(t);
   }
 
   private toolEnd(t: Tracker, ev: Record<string, unknown>, at: number): void {
     t.lastSeenAt = Math.max(t.lastSeenAt, at);
     const status = str(ev.status);
-    if (status && status !== 'ok' && status !== 'success') {
-      const tool = hermesToolName(ev);
-      const error = str(ev.error_message);
+    const failed = !!status && status !== 'ok' && status !== 'success';
+    const tool = hermesToolName(ev);
+    const call = str(ev.call_id) ?? str(ev.tool_call_id);
+    const error = str(ev.error_message);
+    if (failed) {
       this.addActivity(t, {
-        id: `${t.key}:tool-error:${str(ev.call_id) ?? str(ev.tool_call_id) ?? at}`,
+        id: `${t.key}:tool-error:${call ?? at}`,
         at,
         tool,
         kind: 'error',
@@ -455,6 +563,14 @@ export class HermesSource implements AgentSource {
         text: tr('A ferramenta falhou'),
         ...(error ? { detail: truncate(maskSecrets(error), 300) } : {}),
       });
+    }
+    if (call) {
+      const raw = hermesText(ev.result) || (failed ? error ?? '' : '');
+      const p = prepare(raw, RESULT_MAX, RESULT_MAX_LINES);
+      const result: ResultEntry = { kind: 'result', id: `${call}:r`, at, toolUseId: call, text: p.text || tr('(sem saída)') };
+      if (failed) result.error = true;
+      if (p.truncated) result.truncated = true;
+      this.appendTerminal(t, result);
     }
     this.setStatus(t, 'working');
   }
@@ -530,5 +646,30 @@ export class HermesSource implements AgentSource {
   private remember(set: Set<string>, id: string, max: number): void {
     set.add(id);
     if (set.size > max) set.delete(set.values().next().value as string);
+  }
+}
+
+/** Terminal ao vivo de um agente do Hermes: lê o buffer que os eventos do plugin alimentam. */
+class HermesTerminalStream implements MessageStream {
+  readonly intervalMs = 600;
+  private lastSeq = 0;
+
+  constructor(
+    private readonly id: string,
+    private readonly tracker: () => Tracker | undefined,
+  ) {}
+
+  async load(): Promise<TerminalInit> {
+    const all = this.tracker()?.terminal ?? [];
+    const entries = all.slice(-500).map((x) => x.entry);
+    this.lastSeq = all.length ? all[all.length - 1].seq : 0;
+    return { agentId: this.id, entries, truncated: all.length > entries.length };
+  }
+
+  async poll(): Promise<MessageDelta> {
+    const all = this.tracker()?.terminal ?? [];
+    const fresh = all.filter((x) => x.seq > this.lastSeq);
+    if (all.length) this.lastSeq = all[all.length - 1].seq;
+    return { append: fresh.map((x) => x.entry) };
   }
 }

@@ -51,6 +51,28 @@ describe('HermesSource: sessão principal', () => {
     expect(source.sources()).toEqual([{ label: 'hermes', provider: 'hermes', path: DEV, sessions: 1, ok: true }]);
   });
 
+  it('terminal: history, prompt, resposta, ferramenta e resultado; stream entrega init e append', async () => {
+    const { source } = setup();
+    source.applyEvent(ev('session_open', { session_id: 's1', platform: 'cli', project: '/p/loja' }));
+    source.applyEvent(ev('history', { session_id: 's1', messages: [{ role: 'user', content: 'antes' }, { role: 'assistant', content: 'ok' }] }));
+    source.applyEvent(ev('user_message', { session_id: 's1', text: 'roda os testes', turn_id: 't1' }));
+    source.applyEvent(ev('assistant_message', { session_id: 's1', text: 'vou rodar', turn_id: 't1' }));
+    source.applyEvent(ev('tool_start', { session_id: 's1', call_id: 'c1', tool_name: 'terminal', input: { command: 'npm test' }, preview: 'npm test' }));
+    source.applyEvent(ev('tool_end', { session_id: 's1', call_id: 'c1', tool_name: 'terminal', status: 'ok', result: 'ok' }));
+
+    const stream = source.messageStream(MAIN)!;
+    const init = await stream.load();
+    expect(init.agentId).toBe(MAIN);
+    expect(init.entries.map((e) => e.kind)).toEqual(['user', 'assistant', 'user', 'assistant', 'tool', 'result']);
+    expect(init.entries[2]).toMatchObject({ kind: 'user', text: 'roda os testes' });
+    expect(init.entries[4]).toMatchObject({ kind: 'tool', title: 'Bash(npm test)', input: 'npm test' });
+    expect(init.entries[5]).toMatchObject({ kind: 'result', text: 'ok' });
+
+    source.applyEvent(ev('assistant_message', { session_id: 's1', text: 'depois', turn_id: 't2' }));
+    expect((await stream.poll()).append).toMatchObject([{ kind: 'assistant', text: 'depois' }]);
+    expect((await stream.poll()).append).toEqual([]);
+  });
+
   it('busy/idle, ferramenta (uma vez por call), uso (uma vez por id) e aprovação', () => {
     const { office, source, clock } = setup();
     source.applyEvent(ev('session_start', { session_id: 's1', platform: 'cli', project: '/p/loja', model: 'hermes-4' }));
