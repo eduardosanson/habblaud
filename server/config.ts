@@ -52,6 +52,16 @@ export interface ServerConfig {
   updateCheck: boolean;
   /** Observa as sessões do Codex (sources/codex/); HABBLAUD_CODEX=0 desliga. */
   codex: boolean;
+  /** Observa o serviço local do OpenCode (sources/opencode/); HABBLAUD_OPENCODE=0 desliga. */
+  opencode: boolean;
+  /** URL do serviço do OpenCode (HABBLAUD_OPENCODE_URL); sem ela, lê o service.json. */
+  opencodeUrl?: string;
+  /** Senha do serviço do OpenCode (HABBLAUD_OPENCODE_PASSWORD), só em memória. */
+  opencodePassword?: string;
+  /** Caminho do service.json (HABBLAUD_OPENCODE_SERVICE); padrão: $XDG_STATE_HOME/opencode/service.json. */
+  opencodeService?: string;
+  /** Janela de presença de sessões do OpenCode (HABBLAUD_OPENCODE_RECENT_MIN, padrão 120 min). */
+  opencodeRecentMs: number;
   /** Segunda porta, com login, para o celular na rede local (http/remote.ts); ausente = desligada. */
   remote?: RemoteConfig;
   /** Por que o acesso remoto ficou desligado quando as variáveis estão incompletas. */
@@ -222,6 +232,14 @@ export function worldSocketUrl(base: string): string {
   return `${base.replace(/^http/, 'ws').replace(/\/+$/, '')}/v1/socket`;
 }
 
+/** Minutos de HABBLAUD_OPENCODE_RECENT_MIN (padrão 120; 0 = só sessões ativas). */
+export function openCodeRecentMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.HABBLAUD_OPENCODE_RECENT_MIN?.trim();
+  if (!raw) return 120 * 60_000;
+  const minutes = Number.parseInt(raw, 10);
+  return Number.isFinite(minutes) && minutes >= 0 ? minutes * 60_000 : 120 * 60_000;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv): ServerConfig {
   const home = env.HOME || homedir();
   const inDocker = detectDocker(env);
@@ -230,6 +248,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   const host = env.HABBLAUD_HOST?.trim() || '127.0.0.1';
   const pkg = readPackage(rootDir);
   const remote = parseRemoteConfig(env, inDocker);
+  const opencodeFlag = env.HABBLAUD_OPENCODE?.trim();
   return {
     port: Number.isFinite(port) && port > 0 && port < 65536 ? port : 4747,
     host,
@@ -249,6 +268,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
     repo: pkg.repo,
     updateCheck: !env.HABBLAUD_UPDATE_CHECK?.trim() || isTruthy(env.HABBLAUD_UPDATE_CHECK),
     codex: !env.HABBLAUD_CODEX?.trim() || isTruthy(env.HABBLAUD_CODEX),
+    opencode: !opencodeFlag || isTruthy(opencodeFlag),
+    opencodeUrl: env.HABBLAUD_OPENCODE_URL?.trim() || undefined,
+    opencodePassword: env.HABBLAUD_OPENCODE_PASSWORD || undefined,
+    opencodeService: env.HABBLAUD_OPENCODE_SERVICE?.trim() || undefined,
+    opencodeRecentMs: openCodeRecentMs(env),
     remote: remote.config,
     remoteWarning: remote.warning,
     world: parseWorldConfig(env, argv),

@@ -365,7 +365,25 @@
   --step: 3px;
 }
 
-/* Selo de texto "Codex" ao lado do nome da conta (fonte do sistema: na Pixelify o "C" parece "O"). */
+/* Conta do OpenCode: chip com canto cortado e borda dupla, distinto do Codex. */
+.ui-acc-chip[data-provider='opencode'] {
+  border-radius: 3px;
+  background: #0f1f1b;
+  color: var(--acc);
+  box-shadow:
+    inset 0 0 0 1px var(--acc),
+    inset 0 0 0 3px #0f1f1b,
+    inset 0 0 0 4px var(--acc);
+}
+
+.ui-acc-chip--lg[data-provider='opencode'] {
+  box-shadow:
+    inset 0 0 0 1px var(--acc),
+    inset 0 0 0 4px #0f1f1b,
+    inset 0 0 0 5px var(--acc);
+}
+
+/* Selo de texto da ferramenta ao lado do nome da conta (fonte do sistema: na Pixelify o "C" parece "O"). */
 .ui-prov {
   display: inline-flex;
   align-items: center;
@@ -384,6 +402,10 @@
 
 .ui-prov[hidden] {
   display: none;
+}
+
+.ui-prov[data-provider='opencode'] {
+  color: #a7e8c8;
 }
 
 .ui-prov--xs {

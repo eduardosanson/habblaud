@@ -3,6 +3,7 @@
 //   npm run dev    -> tsx server/index.ts --dev (Vite em middleware mode, HMR no mesmo servidor)
 //   npm start      -> node dist/server/index.js (serve dist/client)
 import http from 'node:http';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { codexDirsRefused, isDefaultDir } from './accounts/detect';
 import { AccountsService } from './accounts/service';
@@ -37,6 +38,8 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { OpenCodeSource } from './sources/opencode/source';
+import { openCodeServiceFile } from './sources/opencode/client';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -138,6 +141,24 @@ const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
 if (codex) agents.add(codex);
+// OpenCode: o serviço local se registra em service.json. Sem arquivo, a fonte só entra com HABBLAUD_OPENCODE=1 (mostra
+// o erro) ou com HABBLAUD_OPENCODE_URL; assim quem não usa OpenCode não ganha uma conta vazia no escritório.
+const openCodeFile = config.opencodeService ?? openCodeServiceFile(process.env, config.home);
+const openCodeWanted = config.opencode && (!!config.opencodeUrl || isTruthy(process.env.HABBLAUD_OPENCODE) || existsSync(openCodeFile));
+const opencode = openCodeWanted
+  ? new OpenCodeSource({
+      accounts,
+      office,
+      env: process.env,
+      home: config.home,
+      serviceFile: openCodeFile,
+      recentMs: config.opencodeRecentMs,
+      ...(config.opencodeUrl && config.opencodePassword
+        ? { endpoint: { url: config.opencodeUrl, password: config.opencodePassword } }
+        : {}),
+    })
+  : undefined;
+if (opencode) agents.add(opencode);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;

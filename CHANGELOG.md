@@ -10,6 +10,15 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- **OpenCode no escritório (leitura ao vivo).** O Habblaud agora lê o serviço local do OpenCode V2 pela API HTTP e
+  mostra no escritório as sessões abertas, o que cada uma está fazendo, subagentes, shells e o uso do plano. Cada
+  sessão vira um personagem na sala do projeto e o agente do OpenCode (`build`, `plan`...) vira o papel. A fonte lê o
+  `service.json` sozinha, não precisa de plugin nem de hook, e o uso aparece com a origem “limites do OpenCode”.
+  Nesta primeira fase o terminal, responder permissões e mandar mensagens ainda ficam no OpenCode; agentes do OpenCode
+  também não entram no Habblaud World até o protocolo de lá aceitar a ferramenta.
+
 ## [1.0.3] - 2026-10-16
 
 ### Corrigido

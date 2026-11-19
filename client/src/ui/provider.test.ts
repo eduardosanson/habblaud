@@ -8,19 +8,25 @@ import {
   fallbackShort,
   hasCodexPermission,
   isCodex,
+  isOpenCode,
   looksLikeCodexId,
+  looksLikeOpenCodeId,
   providerOf,
   showsProviderTag,
 } from './provider';
 
-describe('ferramenta (Claude Code ou Codex)', () => {
+describe('ferramenta (Claude Code, Codex ou OpenCode)', () => {
   it('provider ausente = Claude Code', () => {
     expect(providerOf(undefined)).toBe('claude');
     expect(providerOf({})).toBe('claude');
     expect(providerOf({ provider: 'codex' })).toBe('codex');
+    expect(providerOf({ provider: 'opencode' })).toBe('opencode');
     expect(isCodex({ provider: 'codex' })).toBe(true);
     expect(isCodex({ provider: 'claude' })).toBe(false);
+    expect(isOpenCode({ provider: 'opencode' })).toBe(true);
+    expect(isOpenCode({ provider: 'codex' })).toBe(false);
     expect(isCodex(null)).toBe(false);
+    expect(isOpenCode(null)).toBe(false);
   });
 
   it('id com cara de pasta do Codex (só quando a conta já não está no snapshot)', () => {
@@ -34,6 +40,12 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(accountProvider(undefined, 'x')).toBe('claude');
   });
 
+  it('id com cara de conta do OpenCode', () => {
+    for (const id of ['opencode', 'demo:opencode', 'opencode~2', '/x/opencode']) expect(looksLikeOpenCodeId(id), id).toBe(true);
+    for (const id of ['.claude', '.codex', 'meuopencode', '']) expect(looksLikeOpenCodeId(id), id).toBe(false);
+    expect(accountProvider(undefined, 'opencode')).toBe('opencode');
+  });
+
   it('letra do chip sem a conta no snapshot: nunca "." nem vazio', () => {
     expect(fallbackShort('.claude-conta2')).toBe('C');
     expect(fallbackShort('.claude')).toBe('?');
@@ -44,12 +56,16 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(fallbackShort('minha-conta')).toBe('M');
     expect(fallbackShort('')).toBe('?');
     expect(fallbackShort('...', 'codex')).toBe('X');
+    expect(fallbackShort('opencode')).toBe('O');
+    expect(fallbackShort('...', 'opencode')).toBe('O');
   });
 
-  it('selo "Codex": só no Codex, e sem repetir o nome da conta', () => {
+  it('selo da ferramenta: Codex/OpenCode, sem repetir o nome da conta', () => {
     expect(showsProviderTag('codex', 'Conta X')).toBe(true);
     expect(showsProviderTag('codex', 'Codex')).toBe(false);
     expect(showsProviderTag('codex', 'Demo Codex')).toBe(false);
+    expect(showsProviderTag('opencode', 'Conta O')).toBe(true);
+    expect(showsProviderTag('opencode', 'OpenCode')).toBe(false);
     expect(showsProviderTag('claude', 'Conta C')).toBe(false);
   });
 
@@ -58,6 +74,9 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(accountChipLabel({ name: 'Conta X', plan: 'Team', provider: 'codex' }, '.codex', 'codex')).toBe('Conta X · Codex · plano Team');
     expect(accountChipLabel({ name: 'Codex', plan: 'Team', provider: 'codex' }, '.codex', 'codex')).toBe('Codex · plano Team');
     expect(accountChipLabel(undefined, '.codex', 'codex')).toBe('.codex · Codex');
+    expect(accountChipLabel({ name: 'Outra', plan: 'Go', provider: 'opencode' }, 'opencode', 'opencode')).toBe('Outra · OpenCode · plano Go');
+    expect(accountChipLabel({ name: 'OpenCode', provider: 'opencode' }, 'opencode', 'opencode')).toBe('OpenCode');
+    expect(accountChipLabel(undefined, 'opencode', 'opencode')).toBe('opencode · OpenCode');
     expect(accountChipLabel(undefined, '', 'claude')).toBe('Conta desconhecida');
   });
 
@@ -68,6 +87,12 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(emptyOfficeHint([c, d])).toBe('Abra o Claude Code em qualquer projeto (atalhos c ou d) e veja seu agente chegar.');
     expect(emptyOfficeHint([c, d, x])).toBe('Abra o Claude Code (atalhos c ou d) ou o Codex em qualquer projeto e veja seu agente chegar.');
     expect(emptyOfficeHint([x])).toBe('Abra o Claude Code ou o Codex em qualquer projeto e veja seu agente chegar.');
+    expect(emptyOfficeHint([{ short: 'O', provider: 'opencode' as const }])).toBe(
+      'Abra o Claude Code ou o OpenCode em qualquer projeto e veja seu agente chegar.',
+    );
+    expect(emptyOfficeHint([x, { short: 'O', provider: 'opencode' as const }])).toBe(
+      'Abra o Claude Code, o Codex ou o OpenCode em qualquer projeto e veja seu agente chegar.',
+    );
     expect(emptyOfficeHint([])).toBe('Abra o Claude Code em qualquer projeto e veja seu agente chegar.');
   });
 

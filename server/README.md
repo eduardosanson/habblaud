@@ -355,6 +355,31 @@ do Codex levam `provider: 'codex'` (ausente = Claude Code). Ids: `<conta>:<threa
   `/ack` (mesma trava das mensagens). `canMessage` = há entregador (binário achado, ou auxiliar visto há até 10 s).
   Retorno 0 = entrou na fila da sessão (`delivered`); o Codex consome a fila a cada ~10 s, quando a sessão fica ociosa.
 
+## OpenCode
+
+Fonte de agentes `sources/opencode/` (`AgentSource 'opencode'`): o OpenCode V2 roda um serviço local com API HTTP e
+SSE, então não precisa de plugin, hook nem leitura do SQLite. O serviço se registra em
+`$XDG_STATE_HOME/opencode/service.json` (ou `~/.local/state/opencode/service.json`), com `url` e `password`; a fonte
+usa Basic auth só em memória e nunca põe a senha no snapshot, no log ou na página.
+
+- **Sessões:** `GET /api/session` (lista paginada), `GET /api/session/active` (`running`) e
+  `GET /api/session/:id`; a sala é `location.directory`, o papel é o `agent` do OpenCode (`build`, `plan`...) e
+  sessões com `parentID` viram subagentes.
+- **Ao vivo:** `GET /api/event` (SSE) com execução, ferramentas, texto/raciocínio, shells, compactação, permissões,
+  renomeação, uso e remoção. Eventos são live-only: ao reconectar, a fonte refaz o boot para ressincronizar.
+- **Presença:** ativa ou vista/atualizada nos últimos `HABBLAUD_OPENCODE_RECENT_MIN` minutos (padrão 120); arquivadas
+  ficam de fora. O OpenCode guarda sessões antigas para sempre, então sem a janela o escritório lotaria.
+- **Uso:** `GET /api/experimental/usage/limits`; `go.rolling` vira 5 h, `go.weekly` vira a semana, com
+  `source: 'opencode'` no cartão da conta.
+- **Configuração:** `HABBLAUD_OPENCODE=0` desliga; `HABBLAUD_OPENCODE=1` força a fonte (mostra o erro se o serviço não
+  estiver no ar); `HABBLAUD_OPENCODE_URL` e `HABBLAUD_OPENCODE_PASSWORD` substituem o `service.json`;
+  `HABBLAUD_OPENCODE_SERVICE` aponta outro arquivo. Sem nada disso, a fonte só entra quando o `service.json` existe.
+- **Fora desta fase:** terminal/histórico, responder permissões e mandar mensagens. O agente que pede permissão fica
+  `waiting` (a mão levantada), mas a resposta continua no OpenCode. No Docker, o `service.json` e o loopback do host
+  não são acessíveis de dentro do container; use as variáveis acima numa fase seguinte.
+- **Habblaud World:** agentes do OpenCode ficam fora da projeção enquanto o protocolo do World só aceitar Claude
+  Code/Codex; eles nunca são enviados como outra ferramenta.
+
 ## Habblaud World
 
 Ligado por padrão, apontando para `server.habblaud.com` (`DEFAULT_WORLD_URL` em `config.ts`); nada sai do computador
