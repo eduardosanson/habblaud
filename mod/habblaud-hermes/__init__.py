@@ -1,12 +1,10 @@
-"""Habblaud: mostra no escritório o que os agentes do Hermes estão fazendo.
+"""Habblaud: mostra no escritório o que os agentes do Hermes estão fazendo e responde por ele.
 
-Observador, não participante: cada hook publica um evento pequeno no Habblaud local
-(``POST http://127.0.0.1:4747/api/hermes/events``). Nada volta para a conversa, nenhum
-prompt/transcript é enviado e o hook nunca bloqueia o agente. A publicação é assíncrona
-(fila + thread daemon) e falha em silêncio: o Habblaud fora do ar não afeta o Hermes.
-
-O escritório mostra sessões, status, ferramentas, subagentes, aprovações (só o estado
-"esperando") e tokens. Terminal/histórico do Hermes ainda não existem nesta fase.
+Cada hook publica um evento pequeno no Habblaud local (``POST http://127.0.0.1:4747/api/hermes/events``).
+A conversa da sessão aberta vai para o terminal do escritório; a caixa de mensagens injeta texto com
+``ctx.inject_message``; e o transport ``habblaud`` leva as aprovações para o cartão do escritório,
+com o prompt embutido do Hermes como fallback. A publicação é assíncrona (fila + thread daemon) e
+falha em silêncio: o Habblaud fora do ar não afeta o Hermes.
 
 Configuração (opcional):
 
@@ -15,8 +13,9 @@ Configuração (opcional):
     HABBLAUD_PORT=...            porta do Habblaud quando a URL não é dada
     HABBLAUD_HERMES_PROJECT=...  sala do escritório (padrão: terminal.cwd do perfil)
 
-O plugin é instalado como um symlink em ``~/.hermes/plugins/habblaud`` por
-``npm run hermes:install`` e habilitado por perfil com ``hermes [-p perfil] plugins enable habblaud``.
+O plugin é instalado como um symlink em ``~/.hermes/plugins/habblaud`` e em
+``~/.hermes/profiles/<perfil>/plugins/habblaud`` por ``npm run hermes:install``, que também roda
+``hermes [-p perfil] plugins enable habblaud`` e configura a injeção de mensagens e o transport de aprovação.
 """
 
 from __future__ import annotations

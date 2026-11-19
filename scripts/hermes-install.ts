@@ -133,7 +133,7 @@ function install(opts: HermesInstallOptions, out: (line: string) => void): numbe
       if (isSymlink(link)) rmSync(link);
       symlinkSync(PLUGIN_DIR, link, 'dir');
     }
-    out(`Plugin ligado em ${pluginLink(opts.home)} e em ${links.length - 1} perfil(is).`);
+    out(`Plugin ligado em ${pluginLink(opts.home)} e nos perfis (${links.length - 1}).`);
   }
 
   if (opts.noEnable) {
