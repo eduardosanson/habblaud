@@ -87,3 +87,38 @@
   progresso pelas atividades e ferramentas ao vivo.
 - **Polling:** 1 s por terminal aberto no agente e 2 s na sessão do histórico; o poll assíncrono não empilha.
 - **Sessão desconhecida:** o `resolve()` não lista tudo a cada clique; o 404 vem da primeira leitura de mensagens.
+
+## Fase D — mandar mensagens
+
+### Ordem de implementação
+
+1. [x] Fonte do OpenCode
+   - `OpenCodeSource.promptSession(sessionId, text)`: `POST /api/session/{id}/prompt` com `{text, delivery:'queue'}`.
+   - Valida o id, usa o cliente já resolvido e lança com o motivo quando o serviço não está disponível/recusa.
+2. [x] Registro de mensagens
+   - `OpenCodeDeliveryOptions { prompt, available }` em `MessageRegistry`.
+   - `canMessage`/`reachable` para principais do OpenCode; `ERR_OPENCODE_*`.
+   - `pumpOpenCode`: uma por agente, na ordem; aceite = `delivered`, recusa = `failed`; troca de sessão/saída = falha.
+   - `inbox` do plugin restrito a agentes do Claude Code.
+3. [x] Servidor
+   - `server/index.ts` passa o entregador quando a fonte do OpenCode existe.
+4. [x] UI
+   - `composer-model`: dica/sem serviço, fila/entregue/prazo do OpenCode; `provider` do agente preservado.
+   - Dica do Claude Code: instalar + sessão aberta num terminal (o plugin carrega ao abrir).
+5. [x] Testes e documentação
+   - Registro com promise controlada (ordem, recusa, sessão trocada, agente que saiu, caixa de entrada).
+   - Fonte com cliente falso (POST e recusas); caixa com testes puros.
+   - Spec, prompt plan, decisões, CHANGELOG, README e traduções.
+
+### Dependências
+
+- Fase A (fonte/cliente) e Fase B (terminal/histórico) já entregues.
+- `POST /api/session/{id}/prompt` aceita `{text}` e `delivery: 'queue'` na API V2.
+
+### Riscos da Fase D
+
+- **Sem confirmação do modelo:** `delivered` = o serviço aceitou na fila; o prompt pode ainda esperar o turno atual.
+  O terminal mostra o prompt quando ele aparece nas mensagens.
+- **Texto só:** anexos/menções do OpenCode não são enviados nesta fase; o texto vai como foi digitado.
+- **Serviço fora no meio:** o cliente tem prazo de 5 s; um erro vira `failed` com o status, sem derrubar o registro.
+- **Permissões:** um prompt que peça aprovação continua esperando no OpenCode; responder pelo escritório é fase seguinte.

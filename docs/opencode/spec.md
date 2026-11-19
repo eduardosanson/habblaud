@@ -128,7 +128,61 @@ API de sessões/mensagens, sem plugin e sem dependência nova.
 ### Fora de escopo da Fase B
 
 - Responder permissões pelo escritório (`/api/session/{id}/permission/{requestID}/reply`).
-- Mandar mensagens (`POST /api/session/{id}/prompt`).
 - Plugin Python do Hermes e `/api/hermes/events`.
 - Entregas (deliveries) a partir de conversas do OpenCode: o `resolve()` do histórico devolve stream, não arquivo.
+- Alterar o protocolo do Habblaud World para aceitar `opencode`.
+
+## Fase D — mandar mensagens (entregue)
+
+### Contexto de negócio
+
+Faltava o caminho de volta: o terminal do OpenCode mostrava a conversa, mas a caixa de mensagem só entregava ao Claude
+Code (plugin) e ao Codex (`codex queue`). Quem trabalha no OpenCode continuava tendo de trocar de janela para mandar
+o próximo prompt.
+
+### Requisitos funcionais
+
+- RF18: o `MessageRegistry` aceita um entregador opcional do OpenCode; `opencode.prompt(sessionId, text)` chama
+  `POST /api/session/{id}/prompt` com `{text, delivery: 'queue'}` e resolve quando o serviço aceita o prompt.
+- RF19: `canMessage`/`reachable` incluem os agentes principais do OpenCode quando o serviço está resolvido; sem ele, a
+  caixa mostra o motivo (`ERR_OPENCODE_UNAVAILABLE`).
+- RF20: uma mensagem por agente por vez, na ordem; aceita = `delivered` com a atividade "Mensagem pelo Habblaud";
+  recusa do serviço = `failed` com o motivo. Troca de sessão ou agente que saiu antes da vez = falha, sem mandar.
+- RF21: a caixa do OpenCode tem dica, texto de fila/entrega e prazo próprios; a do Claude Code passa a dizer que o
+  plugin carrega ao abrir a sessão (instalar com a sessão aberta não basta).
+- RF22: a caixa de entrada do plugin (`POST /api/mod/inbox`) só atende agentes do Claude Code; Codex e OpenCode nunca
+  são entregues por ela.
+- RF23: nenhuma senha do `service.json` entra no corpo do prompt, no log ou na resposta da página.
+
+### Requisitos não funcionais
+
+- RNF11: sem dependências novas e sem plugin: o servidor usa o `OpenCodeClient` que já existe.
+- RNF12: testes com entregador falso (promise controlada) e cliente falso; nenhum teste manda prompt ao serviço real.
+- RNF13: a promessa do prompt não bloqueia o relógio do registro; o `tick` e o fim de cada entrega chamam a fila.
+
+### Critérios de aceite
+
+- CA17: com o serviço no ar, um agente principal do OpenCode aparece com `canMessage` e `POST /api/messages` chama
+  `POST /api/session/{id}/prompt` na sessão certa, com `delivery: 'queue'`.
+- CA18: duas mensagens para o mesmo agente saem em ordem, uma por vez; a segunda só sai quando a primeira é aceita.
+- CA19: recusa do serviço vira `failed` com o motivo; sem serviço, a mensagem é recusada com o motivo certo.
+- CA20: troca de sessão ou agente que saiu antes da vez falha com `ERR_SESSION_CHANGED`/`ERR_GONE`.
+- CA21: o plugin do Claude Code não busca nem confirma mensagens do OpenCode.
+- CA22: a caixa do OpenCode mostra "Na fila: entregando ao OpenCode…", "Entregue ✓ na fila do OpenCode…" e o prazo
+  "confira no OpenCode"; a do Claude Code explica que o plugin carrega ao abrir a sessão.
+
+### Definition of Done da Fase D
+
+- [x] `OpenCodeSource.promptSession` + `MessageRegistry` com entregador do OpenCode
+- [x] `server/index.ts` ligando o entregador quando a fonte existe
+- [x] UI da caixa com dica, fila, entrega e prazo do OpenCode; dica do Claude Code corrigida
+- [x] Testes do registro, da fonte e da caixa
+- [x] `npm run typecheck`, testes focados, `npm run build` e `npm run i18n:check` verdes
+- [x] CHANGELOG, README do servidor e traduções
+
+### Fora de escopo da Fase D
+
+- Responder permissões do OpenCode pelo escritório.
+- Anexos, menções, skills ou comandos de barra no prompt do OpenCode: vai só o texto.
+- Entregas (deliveries) a partir de conversas do OpenCode.
 - Alterar o protocolo do Habblaud World para aceitar `opencode`.

@@ -259,28 +259,36 @@ ou resposta inválidos), 404 (pedido desconhecido, já entregue ou expirado), 40
 
 ## Mensagens pelo escritório
 
-A página manda texto a um agente principal (`POST /api/messages`, pela gaveta do agente ou pelo rodapé do terminal) e
-o plugin `habblaud-mensagens` da sessão o busca (`POST /api/mod/inbox`, a cada 2 s) e o entrega com
-`$.prompt.submit({ text, asUser: true })`: o modelo lê como se você tivesse digitado. Depois confirma
-(`POST /api/mod/inbox/ack`). Detalhes do plugin em [`mod/README.md`](../mod/README.md).
+A página manda texto a um agente principal (`POST /api/messages`, pela gaveta do agente ou pelo rodapé do terminal).
+Cada ferramenta tem o seu caminho:
+
+- **Claude Code:** o plugin `habblaud-mensagens` da sessão busca (`POST /api/mod/inbox`, a cada 2 s) e entrega com
+  `$.prompt.submit({ text, asUser: true })`: o modelo lê como se você tivesse digitado. Depois confirma
+  (`POST /api/mod/inbox/ack`). Detalhes do plugin em [`mod/README.md`](../mod/README.md). O plugin carrega ao abrir a
+  sessão: instalar com ela já aberta exige reabrir (ou reiniciar o processo do Claude Code).
+- **Codex:** `codex queue` (modo Node) ou o auxiliar do host (`npm run codex:bridge` no Docker).
+- **OpenCode:** `POST /api/session/{id}/prompt` com `{text, delivery: 'queue'}`; o serviço local põe o prompt na fila
+  da sessão. Sem plugin, sem anexos e sem credenciais.
 
 `messages/registry.ts` (`MessageRegistry`):
 
 - **presença:** cada pergunta do plugin marca a sessão (o principal com aquele `sessionId`, e a `account` igual se
-  vier); vista há até 10 s, o agente sai no snapshot com `canMessage: true`. O snapshot só muda quando a presença muda;
+  vier); vista há até 10 s, o agente sai no snapshot com `canMessage: true`. No Codex e no OpenCode, `canMessage` vem
+  do entregador disponível (o `codex`/auxiliar ou o cliente do serviço). O snapshot só muda quando a presença muda;
 - **fila:** até 5 mensagens em aberto por agente (429) e 20.000 caracteres por mensagem; o texto vai como foi digitado,
-  nunca aparece nas respostas para a página nem no log, e é descartado quando a mensagem se resolve;
-- **estados:** `queued` → `sent` (o plugin buscou) → `delivered` ou `failed`. `queued` sem ser buscada em 60 s, `sent`
-  sem confirmação em 30 s ou agente que saiu = `failed`, com o motivo. `delivered` = entrou na sessão ou na fila dela
-  (com o agente ocupado, entra quando ele terminar o turno). Resolvidas ficam 10 min para o `GET`;
+  nunca aparece nas respostas para a página nem no log, e é descartado quando a mensagem se resolve. Cada agente
+  recebe uma por vez, na ordem (o Codex e o OpenCode confirmam quando o comando/prompt é aceito);
+- **estados:** `queued` → `sent` → `delivered` ou `failed`. `queued` sem ser buscada em 60 s, `sent` sem confirmação
+  em 30 s ou agente que saiu = `failed`, com o motivo. `delivered` = entrou na sessão ou na fila dela (com o agente
+  ocupado, entra quando ele terminar o turno). Resolvidas ficam 10 min para o `GET`;
 - entregue: atividade ✉️ "Mensagem pelo Habblaud" no agente (o detalhe mascarado e cortado); agentes do demo recebem
   mensagens fictícias, entregues em ~1 s, sem sessão real.
 
 As rotas (`messages/http.ts`) seguem a trava do terminal e mais uma chave: `ServerConfig.messages` = terminal ligado e
 `HABBLAUD_MENSAGENS` não desligado (`0`, `false`, `off`, `no`). Desligado ou `Host` que não é local → 403 em todas.
 Erros de `POST /api/messages`: 400 (corpo inválido, texto vazio ou longo demais), 404 (agente desconhecido), 409 (o
-agente não recebe: subagente, saiu ou sessão sem o plugin conectado) e 429. O estado sai em `meta.messages` do
-snapshot e em `messages` no `/api/health`.
+agente não recebe: subagente, saiu, sessão do Claude Code sem o plugin conectado ou serviço do OpenCode fora do ar) e
+429. O estado sai em `meta.messages` do snapshot e em `messages` no `/api/health`.
 
 Qualquer processo local consegue chamar essas rotas (como as de permissão): ligar as mensagens é aceitar que um
 programa da própria máquina possa digitar nas sessões que têm o plugin.
@@ -373,6 +381,9 @@ usa Basic auth só em memória e nunca põe a senha no snapshot, no log ou na p�
   `OpenCodeHistory` (sources/opencode/history.ts) lista as sessões raiz com `provider: 'opencode'`. A costura é
   `MessageStream` (sources/stream.ts), opcional em `AgentSource`/`HistorySession`; o caminho de transcript em arquivo
   do Claude Code e do Codex não mudou. Como não há transcript, `RecentSession.size` vai `0` e a UI omite o tamanho.
+- **Mensagens:** a caixa do escritório manda o prompt em `POST /api/session/{id}/prompt` com
+  `{text, delivery: 'queue'}` (sources/opencode/source.ts `promptSession`); o `MessageRegistry` entrega uma por agente,
+  na ordem, e marca `delivered` quando o serviço aceita na fila. Sem plugin e sem anexos nesta fase: vai só o texto.
 - **Presença:** ativa ou vista/atualizada nos últimos `HABBLAUD_OPENCODE_RECENT_MIN` minutos (padrão 120); arquivadas
   ficam de fora. O OpenCode guarda sessões antigas para sempre, então sem a janela o escritório lotaria.
 - **Uso:** `GET /api/experimental/usage/limits`; `go.rolling` vira 5 h, `go.weekly` vira a semana, com
@@ -380,7 +391,7 @@ usa Basic auth só em memória e nunca põe a senha no snapshot, no log ou na p�
 - **Configuração:** `HABBLAUD_OPENCODE=0` desliga; `HABBLAUD_OPENCODE=1` força a fonte (mostra o erro se o serviço não
   estiver no ar); `HABBLAUD_OPENCODE_URL` e `HABBLAUD_OPENCODE_PASSWORD` substituem o `service.json`;
   `HABBLAUD_OPENCODE_SERVICE` aponta outro arquivo. Sem nada disso, a fonte só entra quando o `service.json` existe.
-- **Fora desta fase:** responder permissões e mandar mensagens. O agente que pede permissão fica `waiting` (a mão
+- **Fora desta fase:** responder permissões pelo escritório. O agente que pede permissão fica `waiting` (a mão
   levantada), mas a resposta continua no OpenCode. Entregas também não saem de conversas do OpenCode (o histórico
   devolve stream, não arquivo). No Docker, o `service.json` e o loopback do host não são acessíveis de dentro do
   container; use as variáveis acima numa fase seguinte.

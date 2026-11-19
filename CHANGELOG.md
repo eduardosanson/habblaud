@@ -22,6 +22,10 @@ do meio (0.**3**.0).
   prompts, respostas, raciocínio, ferramentas e resultados. O terminal ao vivo funciona também para os subagentes, e
   o histórico lista as sessões dos últimos sete dias com o selo “OpenCode”. A conversa vem das rotas de
   sessão/mensagens do serviço local, sem plugin, sem ler o banco dele e sem tocar em credenciais.
+- **Mensagens para o OpenCode.** A caixa de mensagem do agente agora manda o prompt direto ao serviço local do
+  OpenCode, que o coloca na fila da sessão. É uma mensagem por vez, na ordem, e a linha de situação mostra a fila e a
+  entrega como no Codex. Para o Claude Code, a dica agora lembra que o plugin de mensagens carrega ao abrir a sessão:
+  instalar com a sessão já aberta não basta.
 
 ## [1.0.3] - 2026-10-16
 

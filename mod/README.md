@@ -100,7 +100,9 @@ esquema do `hooks.json`).
 Fica separado do mod `habblaud` de propósito: aquele só observa; este age, digitando na sessão em seu nome. Para
 ficar sem ele: `npm run mod:install -- --sem-mensagens` (um já instalado continua; para tirar:
 `claude plugin uninstall habblaud-mensagens@habblaud`). O `npm run docker:up` atualiza o plugin de quem já o tem,
-mas não o instala sozinho: numa conta com o mod e sem ele, só dá a dica de rodar o `npm run mod:install`.
+mas não o instala sozinho: numa conta com o mod e sem ele, só dá a dica de rodar o `npm run mod:install`. O hook é
+carregado ao abrir a sessão: depois de instalar ou atualizar, reabra a sessão do Claude Code (um `--resume` também
+carrega).
 
 ### O que ele acessa
 

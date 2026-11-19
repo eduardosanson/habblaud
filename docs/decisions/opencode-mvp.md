@@ -39,3 +39,21 @@
 - Decisão: o `resolve()` do histórico não lista sessões a cada clique; um id bem formado é validado na primeira leitura de mensagens e o 404 do serviço vira 404 JSON no terminal.
 - Decisão: o polling assíncrono tem trava por conexão (`busy`) e `opencode:smoke` passou a abrir histórico e terminal, para provar as duas rotas contra o serviço real.
 - Risco aceito: permissões e mensagens continuam só no OpenCode; o World segue sem `opencode` até o protocolo de lá aceitar a ferramenta.
+
+## SPEC → PROMPT PLAN (Fase D) — 2026-11-19
+
+- Decisão: mandar prompt pelo `POST /api/session/{id}/prompt` com `delivery: 'queue'`, sem plugin — o serviço do OpenCode já enfileira e o Habblaud trata o 2xx como entregue.
+- Decisão: o entregador é opcional no `MessageRegistry` (`opencode.prompt`/`available`); Claude Code e Codex mantêm os caminhos atuais.
+- Risco aceito: `delivered` significa "aceito na fila", não "o modelo já leu"; o prompt aparece no terminal quando entra nas mensagens.
+
+## TDD → BUILD (Fase D) — 2026-11-19
+
+- Decisão: uma mensagem por agente por vez, na ordem, com `pumpOpenCode` e correção de uma resposta atrasada — evita prompt dobrado no serviço.
+- Decisão: `POST /api/mod/inbox` passa a exigir `provider === 'claude'`; antes, um agente do OpenCode com o mesmo `sessionId` poderia ser marcado como presente pelo plugin.
+- Risco aceito: só o texto vai no prompt; anexos, menções e skills do OpenCode ficam para uma fase seguinte.
+
+## BUILD → EVIDÊNCIAS (Fase D) — 2026-11-19
+
+- Decisão: a dica do Claude Code agora diz que o plugin carrega ao abrir a sessão — instalar com a sessão já aberta não injeta o hook nela.
+- Decisão: testes do OpenCode usam um entregador com promise controlada; nenhum teste manda prompt ao serviço real (o smoke continua só leitura).
+- Risco aceito: um prompt que peça permissão fica esperando no OpenCode; o escritório não responde permissões do OpenCode nesta fase.
