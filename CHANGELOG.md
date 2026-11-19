@@ -16,8 +16,12 @@ do meio (0.**3**.0).
   mostra no escritório as sessões abertas, o que cada uma está fazendo, subagentes, shells e o uso do plano. Cada
   sessão vira um personagem na sala do projeto e o agente do OpenCode (`build`, `plan`...) vira o papel. A fonte lê o
   `service.json` sozinha, não precisa de plugin nem de hook, e o uso aparece com a origem “limites do OpenCode”.
-  Nesta primeira fase o terminal, responder permissões e mandar mensagens ainda ficam no OpenCode; agentes do OpenCode
-  também não entram no Habblaud World até o protocolo de lá aceitar a ferramenta.
+  Responder permissões e mandar mensagens ainda ficam no OpenCode; agentes do OpenCode também não entram no Habblaud
+  World até o protocolo de lá aceitar a ferramenta.
+- **Terminal e histórico do OpenCode.** A conversa de uma sessão do OpenCode agora abre no terminal do Habblaud, com
+  prompts, respostas, raciocínio, ferramentas e resultados. O terminal ao vivo funciona também para os subagentes, e
+  o histórico lista as sessões dos últimos sete dias com o selo “OpenCode”. A conversa vem das rotas de
+  sessão/mensagens do serviço local, sem plugin, sem ler o banco dele e sem tocar em credenciais.
 
 ## [1.0.3] - 2026-10-16
 
