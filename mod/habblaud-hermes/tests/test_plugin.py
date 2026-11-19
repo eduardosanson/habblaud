@@ -236,6 +236,7 @@ def test_register_optional_hooks_and_approval_transport(tmp_path, monkeypatch):
             registered.append(f"transport:{name}")
 
     monkeypatch.setattr(plugin, "_start_poller", lambda: registered.append("poller"))
+    monkeypatch.setattr(plugin, "_publish", lambda event: None)
     pkg = types.ModuleType("hermes_cli")
     pkg.__path__ = []
     mod = types.ModuleType("hermes_cli.plugins")
@@ -245,4 +246,6 @@ def test_register_optional_hooks_and_approval_transport(tmp_path, monkeypatch):
     plugin.register(Ctx())
     assert "pre_llm_call" in registered
     assert "transport:habblaud" in registered
+    assert "poller" not in registered
+    plugin._on_session_open(session_id="s1", platform="cli")
     assert "poller" in registered

@@ -359,6 +359,7 @@ def _on_session_open(**kw: Any) -> None:
         "reason": kw.get("reason"),
         "project": _project(kw),
     })
+    _start_poller()
 
 
 def _on_session_start(**kw: Any) -> None:
@@ -369,6 +370,7 @@ def _on_session_start(**kw: Any) -> None:
         "model": kw.get("model"),
         "project": _project(kw),
     })
+    _start_poller()
 
 
 def _on_session_end(**kw: Any) -> None:
@@ -723,5 +725,4 @@ def register(ctx: Any) -> None:
         ctx.register_approval_transport("habblaud", _approval_present)
     except (AttributeError, TypeError, ValueError):
         logger.info("habblaud: approval transport indisponível nesta versão do Hermes")
-    _start_poller()
     logger.info("habblaud: plugin do escritório registrado — eventos para %s", _url())
