@@ -398,6 +398,33 @@ usa Basic auth só em memória e nunca põe a senha no snapshot, no log ou na p�
 - **Habblaud World:** agentes do OpenCode ficam fora da projeção enquanto o protocolo do World só aceitar Claude
   Code/Codex; eles nunca são enviados como outra ferramenta.
 
+## Hermes
+
+Fonte de agentes `sources/hermes/` (`AgentSource 'hermes'`): um plugin Python (`mod/habblaud-hermes`) observa os hooks
+do Hermes e manda um JSON por evento para `POST /api/hermes/events`. É leitura ao vivo: o plugin não lê transcript,
+não manda prompt e nada volta para a sessão.
+
+- **Eventos:** `on_session_open`/`on_session_start`/`on_session_end`/`on_session_finalize`, `pre_llm_call`/
+  `post_llm_call` (busy/idle), `pre_tool_call`/`post_tool_call` (atividade e erro), `subagent_start`/`subagent_stop`,
+  `pre_approval_request`/`post_approval_response` (só `waiting`) e `post_api_request` (tokens de entrada/saída).
+  Hooks opcionais só entram quando o `VALID_HOOKS` da versão do Hermes os conhece.
+- **Contas e salas:** cada perfil (`~/.hermes` ou `~/.hermes/profiles/<nome>`) vira uma conta do Hermes; a sala é o
+  `project` mandado pelo plugin (o `terminal.cwd` do perfil ou `HABBLAUD_HERMES_PROJECT`). Sem eventos, a fonte não
+  aparece no snapshot/health.
+- **Presença:** `session_end` fecha; sessão sem evento por 2 h sai na varredura. `session_idle` não remove: o agente
+  fica no escritório ocioso.
+- **Rota:** `POST /api/hermes/events` (`{profile, home?, event}`) só aceita POST JSON de Host local e, fora do Docker,
+  conexão pelo loopback — a mesma trava de `/api/codex/events`. Corpo até 256 KB; resposta `{ok}`. `hermesEvents` no
+  `/api/health` diz se a fonte está ligada.
+- **Plugin:** `mod/habblaud-hermes` (Python, sem dependência nova) publica em fila + thread daemon, com POST de 1,5 s e
+  falha em silêncio. `HABBLAUD_HERMES=0` desliga; `HABBLAUD_HERMES_URL`/`HABBLAUD_PORT` mudam o destino;
+  `HABBLAUD_HERMES_PROJECT` força a sala. Instalação: `npm run hermes:install` (symlink em `~/.hermes/plugins/habblaud`
+  e `hermes plugins enable habblaud` no padrão e nos perfis); `hermes:status` e `hermes:uninstall` acompanham.
+- **Ainda fora:** terminal/histórico (o escritório diz "terminal do Hermes ainda não está disponível"), mensagens
+  (a caixa avisa) e responder aprovações pelo escritório. O agente só levanta a mão; a resposta continua no Hermes.
+- **Habblaud World:** agentes do Hermes ficam fora da projeção enquanto o protocolo do World só aceitar Claude
+  Code/Codex; eles nunca são enviados como outra ferramenta.
+
 ## Habblaud World
 
 Ligado por padrão, apontando para `server.habblaud.com` (`DEFAULT_WORLD_URL` em `config.ts`); nada sai do computador
