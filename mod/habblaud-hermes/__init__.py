@@ -28,6 +28,8 @@ import queue
 import re
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -57,6 +59,17 @@ _warn_lock = threading.Lock()
 _warn_at: Optional[float] = None
 _warn_suppressed = 0
 _last_pid = os.getpid()
+_ctx = None
+_contexts: list[tuple[Any, str, str]] = []
+_plugin_profile = "default"
+_poller_started = False
+_poller_lock = threading.Lock()
+_history_sent: set[str] = set()
+_history_lock = threading.Lock()
+_approval_context: dict[str, dict[str, str]] = {}
+_approval_lock = threading.Lock()
+_event_seq = 0
+_event_lock = threading.Lock()
 
 # O gateway do Hermes roda sessões concorrentes: guardar a última sessão global
 # atribuiria a aprovação ao agente errado. O contexto é por thread/contexto.
@@ -93,6 +106,70 @@ def _url() -> str:
         return explicit
     port = str(os.environ.get("HABBLAUD_PORT", "")).strip() or str(DEFAULT_PORT)
     return f"http://127.0.0.1:{port}/api/hermes/events"
+
+
+def _base() -> str:
+    parts = urllib.parse.urlsplit(_url())
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def _http_json(path: str, body: Optional[dict[str, Any]] = None, *, timeout: float = 3.0) -> Optional[dict[str, Any]]:
+    """One local JSON request; None on any failure (never raises)."""
+    data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+    method = "GET" if body is None else "POST"
+    request = urllib.request.Request(
+        f"{_base()}{path}",
+        data=data,
+        method=method,
+        headers={"Accept": "application/json", **({"Content-Type": "application/json"} if data else {})},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 — URL local
+            raw = response.read(2 * 1024 * 1024)
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+    except Exception as exc:
+        _warn(exc)
+        return None
+
+
+def _clip(value: Any, limit: int) -> str:
+    text = "" if value is None else str(value)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _text_of(value: Any, limit: int = 20_000) -> str:
+    if isinstance(value, str):
+        return _clip(value, limit)
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+            elif isinstance(item, dict) and item.get("type") == "image":
+                parts.append("[imagem]")
+        return _clip("\n".join(parts), limit)
+    if isinstance(value, dict):
+        for key in ("text", "content", "message"):
+            if key in value:
+                return _text_of(value[key], limit)
+    return ""
+
+
+def _jsonable(value: Any, limit: int = 8_000) -> Any:
+    try:
+        raw = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        return {}
+    if len(raw) > limit:
+        return {"_truncated": raw[:limit]}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _profile() -> str:
@@ -234,21 +311,31 @@ def _start_worker() -> None:
 
 
 def _after_fork() -> None:
-    """O filho não herda a thread do pai; recomeça a fila para não repetir eventos do pai."""
-    global _queue, _worker_started, _last_pid
+    """O filho não herda as threads do pai; recomeça fila, poller e travas para não repetir eventos do pai."""
+    global _queue, _worker_started, _last_pid, _poller_started, _poller_lock, _event_lock, _history_lock, _approval_lock
     _queue = queue.Queue(maxsize=QUEUE_MAX)
     _worker_started = False
     _last_pid = os.getpid()
+    _poller_started = False
+    _poller_lock = threading.Lock()
+    _event_lock = threading.Lock()
+    _history_lock = threading.Lock()
+    _approval_lock = threading.Lock()
 
 
 def _publish(event: Dict[str, Any]) -> None:
+    global _event_seq
     if _disabled():
         return
     if not isinstance(event, dict) or not event.get("type"):
         return
     if os.getpid() != _last_pid:
         _after_fork()
+    with _event_lock:
+        _event_seq += 1
+        seq = _event_seq
     event.setdefault("ts", time.time())
+    event.setdefault("event_id", f"{os.getpid()}-{time.time_ns()}-{seq}")
     body = {"profile": _profile(), "home": _home(), "event": event}
     _start_worker()
     try:
@@ -305,12 +392,47 @@ def _on_session_delete(**kw: Any) -> None:
     _publish({"type": "session_delete", "session_id": kw.get("session_id")})
 
 
+def _publish_history(session_id: str, history: Any) -> None:
+    key = f"{_profile()}:{session_id}"
+    with _history_lock:
+        if key in _history_sent:
+            return
+        # O primeiro turno é a única chance: se o histórico vier vazio (sessão nova), os turnos seguintes já
+        # aparecem ao vivo como user_message/assistant_message.
+        _history_sent.add(key)
+    if not isinstance(history, list) or not history:
+        return
+    messages = []
+    for item in history[-100:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        text = _text_of(item.get("content"))
+        if text.strip():
+            messages.append({"role": role, "content": text})
+    if messages:
+        _publish({"type": "history", "session_id": session_id, "messages": messages})
+
+
 def _pre_llm_call(**kw: Any) -> None:
-    _publish({"type": "session_busy", "session_id": kw.get("session_id"), "platform": kw.get("platform") or "hermes"})
+    sid = kw.get("session_id")
+    if isinstance(sid, str) and sid:
+        _publish_history(sid, kw.get("conversation_history"))
+        text = _text_of(kw.get("user_message"))
+        if text.strip():
+            _publish({"type": "user_message", "session_id": sid, "text": text, "turn_id": kw.get("turn_id")})
+    _publish({"type": "session_busy", "session_id": sid, "platform": kw.get("platform") or "hermes"})
 
 
 def _post_llm_call(**kw: Any) -> None:
-    _publish({"type": "session_idle", "session_id": kw.get("session_id"), "platform": kw.get("platform") or "hermes"})
+    sid = kw.get("session_id")
+    if isinstance(sid, str) and sid:
+        text = _text_of(kw.get("assistant_response"))
+        if text.strip():
+            _publish({"type": "assistant_message", "session_id": sid, "text": text, "turn_id": kw.get("turn_id")})
+    _publish({"type": "session_idle", "session_id": sid, "platform": kw.get("platform") or "hermes"})
 
 
 def _pre_tool_call(**kw: Any) -> None:
@@ -324,6 +446,7 @@ def _pre_tool_call(**kw: Any) -> None:
         "call_id": call,
         "tool_name": kw.get("tool_name"),
         "preview": _preview(kw.get("args")),
+        "input": _jsonable(kw.get("args") or {}),
     })
     return None
 
@@ -336,6 +459,7 @@ def _post_tool_call(**kw: Any) -> None:
         "tool_name": kw.get("tool_name"),
         "status": kw.get("status") or "ok",
         "error_message": _short(kw.get("error_message")),
+        "result": _text_of(kw.get("result")),
         "duration_ms": kw.get("duration_ms"),
     })
     return None
@@ -374,23 +498,32 @@ def _approval_identity(kw: Dict[str, Any]) -> tuple[str, str]:
 
 def _pre_approval_request(**kw: Any) -> None:
     sid, call = _approval_identity(kw)
+    request_id = str(kw.get("request_id") or "")
+    if request_id and sid:
+        with _approval_lock:
+            _approval_context[request_id] = {"session_id": sid, "profile": _profile(), "home": _home()}
     _publish({
         "type": "approval_request",
         "session_id": sid,
         "call_id": call,
-        "request_id": kw.get("request_id") or "",
+        "request_id": request_id,
         "command": _short(kw.get("command") or kw.get("description")),
+        "description": _short(kw.get("description")),
         "surface": kw.get("surface"),
     })
 
 
 def _post_approval_response(**kw: Any) -> None:
     sid, call = _approval_identity(kw)
+    request_id = str(kw.get("request_id") or "")
+    if request_id:
+        with _approval_lock:
+            _approval_context.pop(request_id, None)
     _publish({
         "type": "approval_response",
         "session_id": sid,
         "call_id": call,
-        "request_id": kw.get("request_id") or "",
+        "request_id": request_id,
         "choice": kw.get("choice"),
     })
 
@@ -432,8 +565,124 @@ def _post_api_request(**kw: Any) -> None:
     _publish(event)
 
 
+class _ApprovalFallback(Exception):
+    """No office answer: let the host fall back to the built-in terminal prompt."""
+
+
+def _approval_present(request: Any):
+    """Approval transport: turn the Hermes approval into a Habblaud card and wait for the answer."""
+    request_id = str(getattr(request, "request_id", "") or "")
+    with _approval_lock:
+        where = dict(_approval_context.get(request_id) or {})
+    session_id = where.get("session_id", "")
+    if not request_id or not session_id:
+        raise _ApprovalFallback("sem sessão para o pedido")
+    body = {
+        "provider": "hermes",
+        "account": where.get("profile") or _profile(),
+        "session_id": session_id,
+        "tool_name": "terminal",
+        "tool_input": {
+            "command": getattr(request, "command", "") or "",
+            "description": getattr(request, "description", "") or "",
+        },
+        "timeout_ms": int(max(5.0, float(getattr(request, "timeout_seconds", 300.0) or 300.0)) * 1000),
+    }
+    created = _http_json("/api/permissions", body, timeout=4.0)
+    if not created or not created.get("id") or created.get("skip"):
+        raise _ApprovalFallback("escritório sem página ou sessão desconhecida")
+    permission_id = str(created["id"])
+    deadline = time.monotonic() + max(5.0, float(getattr(request, "timeout_seconds", 300.0) or 300.0))
+    while time.monotonic() < deadline:
+        answer = _http_json(f"/api/permissions/{urllib.parse.quote(permission_id, safe='')}/wait?timeout=20", None, timeout=25.0)
+        if not answer:
+            raise _ApprovalFallback("Habblaud não respondeu")
+        status = answer.get("status")
+        if status == "decided":
+            behavior = answer.get("behavior")
+            if behavior == "allow":
+                return request.respond("once")
+            if behavior == "deny":
+                return request.respond("deny")
+            raise _ApprovalFallback("resposta que o transport não entende")
+        if status == "released":
+            raise _ApprovalFallback("devolvido ao terminal")
+    raise _ApprovalFallback("tempo esgotado no escritório")
+
+
+def _poll_once() -> None:
+    """One inbox round; separated from the loop so tests can call it without sleeping."""
+    if _disabled():
+        return
+    contexts = list(_contexts) or ([(_ctx, _plugin_profile, _home())] if _ctx is not None else [])
+    if not contexts:
+        return
+    listing = _http_json("/api/hermes/sessions", None, timeout=4.0)
+    sessions = listing.get("sessions") if isinstance(listing, dict) else None
+    for ctx, profile, _home_dir in contexts:
+        if not hasattr(ctx, "inject_message"):
+            continue
+        for item in sessions if isinstance(sessions, list) else []:
+            if not isinstance(item, dict) or item.get("profile") != profile:
+                continue
+            session = item.get("session")
+            account = item.get("account")
+            if not isinstance(session, str) or not session:
+                continue
+            inbox = _http_json(
+                "/api/mod/inbox",
+                {"provider": "hermes", "account": account, "session": session, "profile": profile},
+                timeout=4.0,
+            )
+            messages = inbox.get("messages") if isinstance(inbox, dict) else None
+            for message in messages if isinstance(messages, list) else []:
+                if not isinstance(message, dict):
+                    continue
+                mid, text = message.get("id"), message.get("text")
+                if not isinstance(mid, str) or not isinstance(text, str) or not text.strip():
+                    continue
+                try:
+                    delivered = bool(ctx.inject_message(text, session_key=session))
+                except Exception as exc:
+                    _warn(exc)
+                    delivered = False
+                # Outro processo do mesmo perfil pode ser o dono da sessão: devolve à fila para ele buscar.
+                if delivered:
+                    _http_json("/api/mod/inbox/ack", {"session": session, "results": [{"id": mid, "ok": True}]}, timeout=4.0)
+                else:
+                    _http_json(
+                        "/api/mod/inbox/ack",
+                        {"session": session, "results": [{"id": mid, "ok": False, "retry": True, "error": "sessão não está neste processo do Hermes"}]},
+                        timeout=4.0,
+                    )
+
+
+def _poll_inbox() -> None:
+    """Polls the office for messages and injects them into the live Hermes sessions."""
+    while True:
+        try:
+            _poll_once()
+        except Exception as exc:
+            _warn(exc)
+        time.sleep(2.0)
+
+
+def _start_poller() -> None:
+    global _poller_started
+    with _poller_lock:
+        if _poller_started:
+            return
+        threading.Thread(target=_poll_inbox, name="habblaud-hermes-inbox", daemon=True).start()
+        _poller_started = True
+
+
 def register(ctx: Any) -> None:
     """Registra os hooks; nomes opcionais só entram quando o Hermes desta versão os conhece."""
+    global _ctx, _plugin_profile
+    _ctx = ctx
+    _plugin_profile = _profile()
+    if not any(item[0] is ctx for item in _contexts):
+        _contexts.append((ctx, _plugin_profile, _home()))
     core = (
         ("on_session_start", _on_session_start),
         ("on_session_end", _on_session_end),
@@ -462,4 +711,9 @@ def register(ctx: Any) -> None:
     for name, callback in optional:
         if name in VALID_HOOKS:
             ctx.register_hook(name, callback)
+    try:
+        ctx.register_approval_transport("habblaud", _approval_present)
+    except (AttributeError, TypeError, ValueError):
+        logger.info("habblaud: approval transport indisponível nesta versão do Hermes")
+    _start_poller()
     logger.info("habblaud: plugin do escritório registrado — eventos para %s", _url())
