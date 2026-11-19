@@ -33,6 +33,7 @@ export function composerMode(agent: AgentInfo | undefined, env: ComposerEnv): Co
   if (env.replaying) return { kind: 'off', text: tr('Sem mensagens no timelapse: o escritório mostrado é o de outro momento') };
   if (agent?.kind === 'sub') return { kind: 'off', text: tr('Subagentes não recebem mensagens: escreva para o agente principal') };
   if (!agent || agent.status === 'offline' || agent.status === 'done') return { kind: 'off', text: tr('Sessão encerrada') };
+  if (agent.provider === 'hermes') return { kind: 'off', text: tr('Mensagens para o Hermes ainda não estão disponíveis: use o terminal dele') };
   const codex = agent.provider === 'codex';
   const opencode = agent.provider === 'opencode';
   if (!env.enabled) {

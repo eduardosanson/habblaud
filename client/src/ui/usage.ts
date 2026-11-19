@@ -12,7 +12,7 @@ import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex, isOpenCode } from './provider';
+import { isCodex, isHermes, isOpenCode } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
@@ -187,7 +187,7 @@ export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir
 export function usageMessage(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>): [string, string] {
   const state = cardState(a);
   if (state === 'noquota') return [tr('sem cota'), tr('sem cota')];
-  if (isCodex(a) || isOpenCode(a)) return [tr('sem dados ainda'), tr('sem dados')];
+  if (isCodex(a) || isOpenCode(a) || isHermes(a)) return [tr('sem dados ainda'), tr('sem dados')];
   return [tr('sem dados de uso'), tr('sem dados')];
 }
 
@@ -210,6 +210,12 @@ export function openCodeUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' |
   if (state === 'empty') return tr('Não há o que instalar: o OpenCode informa os limites do plano no próprio serviço local.');
   const age = a.usage ? relativeTime(a.usage.fetchedAt, now) : '';
   return tr('O OpenCode informa os limites do plano aberto (5 h e semana): estes números são da última leitura ({0}).', [age]);
+}
+
+/** Explicação do cartão de uma conta do Hermes (dica); '' nas outras. O Hermes não informa limites de plano. */
+export function hermesUsageNote(a: Pick<AccountInfo, 'provider'>): string {
+  if (!isHermes(a)) return '';
+  return tr('O Hermes não informa limites de plano: os tokens de cada sessão aparecem no agente.');
 }
 
 export class UsageCards {
@@ -349,12 +355,14 @@ export class UsageCards {
     const now = this.ctx.now();
     const codex = isCodex(a);
     const opencode = isOpenCode(a);
+    const hermes = isHermes(a);
+    const toolCard = codex || opencode || hermes;
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
-    updateProviderTag(r.prov, codex ? 'codex' : opencode ? 'opencode' : 'claude', a.name);
+    updateProviderTag(r.prov, a.provider ?? 'claude', a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : '']));
+    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : a.provider === 'hermes' ? ' (Hermes)' : '']));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -395,11 +403,11 @@ export class UsageCards {
     setText(r.msgLong, msgLong);
     setText(r.msgShort, msgShort);
     setHidden(r.msg, state !== 'empty' && state !== 'noquota');
-    setHidden(r.how, state === 'noquota');
+    setHidden(r.how, state === 'noquota' || hermes);
     r.msg.classList.toggle('is-noquota', state === 'noquota');
     setTitle(r.msg, state === 'noquota' ? (codex ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a, now) : '') : '');
-    setText(r.howLong, codex || opencode ? tr('Como funciona') : tr('Como ativar'));
-    setText(r.howShort, codex || opencode ? tr('Saber') : tr('Ativar'));
+    setText(r.howLong, toolCard ? tr('Como funciona') : tr('Como ativar'));
+    setText(r.howShort, toolCard ? tr('Saber') : tr('Ativar'));
     r.how.dataset.help = codex ? 'codex' : 'usage';
     setTitle(
       r.how,
@@ -415,7 +423,9 @@ export class UsageCards {
   private updateTip(r: CardRefs, a: AccountInfo, state: CardState, five: UsageWindowView | null, week: UsageWindowView | null, now: number): void {
     const codex = isCodex(a);
     const opencode = isOpenCode(a);
-    const tool = codex ? 'Codex' : opencode ? 'OpenCode' : '';
+    const hermes = isHermes(a);
+    const toolCard = codex || opencode || hermes;
+    const tool = codex ? 'Codex' : opencode ? 'OpenCode' : hermes ? 'Hermes' : '';
     setText(r.tipTitle, `${a.name}${tool && !new RegExp(tool, 'i').test(a.name) ? ` · ${tool}` : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
     const rows: [string, string][] = [];
     if (tool) rows.push([tr('Ferramenta'), tool]);
@@ -428,22 +438,22 @@ export class UsageCards {
     if (u && (u.fiveHour || u.sevenDay)) {
       rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
       rows.push([tr('Semana'), week?.summary ?? '—']);
-      // Opus e Sonnet são janelas do Claude: no Codex/OpenCode não existem.
-      const opus = codex || opencode ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
-      const sonnet = codex || opencode ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
+      // Opus e Sonnet são janelas do Claude: no Codex/OpenCode/Hermes não existem.
+      const opus = toolCard ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
+      const sonnet = toolCard ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
       if (opus) rows.push([tr('Opus (semana)'), opus.summary]);
       if (sonnet) rows.push([tr('Sonnet (semana)'), sonnet.summary]);
     }
     if (u && state === 'noquota') rows.push([tr('Cota'), tr('sem cota nem créditos agora')]);
-    if (u && (state !== 'empty' || codex || opencode)) {
+    if (u && (state !== 'empty' || toolCard)) {
       rows.push([tr('Origem'), sourceLabel(u)]);
       rows.push([tr('Atualizado'), relativeTime(u.fetchedAt, now)]);
     }
     syncRows(r.tipRows, rows);
 
-    // Codex: a explicação dele, sem o passo a passo do Claude Code (não há o que instalar para o uso).
-    if (codex || opencode) {
-      const note = codex ? codexUsageNote(a, now) : openCodeUsageNote(a, now);
+    // Codex/OpenCode/Hermes: a explicação da ferramenta, sem o passo a passo do Claude Code.
+    if (toolCard) {
+      const note = codex ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a, now) : hermesUsageNote(a);
       setText(r.tipNote, note);
       setHidden(r.tipNote, !note);
       setHidden(r.tipSetup, true);

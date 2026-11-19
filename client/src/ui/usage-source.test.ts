@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
-import { cardState, codexUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import { cardState, codexUsageNote, hermesUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -70,5 +70,16 @@ describe('cartão de uso de uma conta do OpenCode', () => {
     expect(openCodeUsageNote(opencode({ usage }), 12 * MIN)).toBe(
       'O OpenCode informa os limites do plano aberto (5 h e semana): estes números são da última leitura (há 12 min).',
     );
+  });
+});
+
+describe('cartão de uso de uma conta do Hermes', () => {
+  const hermes = (over: Partial<Acc> = {}): Acc => ({ provider: 'hermes', usageStatus: 'ok', configDir: '~/.hermes/profiles/developer', ...over });
+
+  it('sem limites de plano: sem números, com a explicação de que os tokens ficam no agente', () => {
+    expect(usageMessage(hermes())).toEqual(['sem dados ainda', 'sem dados']);
+    expect(hermesUsageNote(hermes())).toBe('O Hermes não informa limites de plano: os tokens de cada sessão aparecem no agente.');
+    expect(hermesUsageNote({})).toBe('');
+    expect(usageSubtitle(hermes())).toBe('~/.hermes/profiles/developer');
   });
 });

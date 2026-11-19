@@ -138,6 +138,15 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(timeoutError('opencode')).toBe(OPENCODE_TIMEOUT_ERROR);
   });
 
+  it('Hermes: ainda sem mensagens; a caixa diz para usar o terminal dele', () => {
+    const hermes = (over: Partial<AgentInfo> = {}) => agent({ provider: 'hermes', ...over });
+    for (const a of [hermes(), hermes({ canMessage: true }), hermes({ canMessage: undefined })]) {
+      expect(composerMode(a, ON)).toEqual({ kind: 'off', text: 'Mensagens para o Hermes ainda não estão disponíveis: use o terminal dele' });
+    }
+    expect(composerMode(hermes({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
+    expect(composerMode(hermes({ kind: 'sub', parentId: 'acc:1' }), ON).kind).toBe('off');
+  });
+
   it('consulta da entrega: rápida no começo, mais espaçada depois', () => {
     expect(pollDelay(0)).toBeLessThan(1_000);
     expect(pollDelay(20_000)).toBeGreaterThan(pollDelay(0));

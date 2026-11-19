@@ -345,9 +345,10 @@ export class TerminalStreams {
       if (stream) return new MessageConversation(stream, stream.intervalMs ?? this.pollMs);
       const path = this.opts.transcriptPathOf(agentId);
       if (!path) {
-        return office.detail(agentId)?.agent.provider === 'opencode'
-          ? tr('conversa do OpenCode indisponível no momento')
-          : tr('transcript do agente não encontrado');
+        const provider = office.detail(agentId)?.agent.provider;
+        if (provider === 'opencode') return tr('conversa do OpenCode indisponível no momento');
+        if (provider === 'hermes') return tr('terminal do Hermes ainda não está disponível');
+        return tr('transcript do agente não encontrado');
       }
       const parserFor = this.opts.parserFor;
       const createParser = parserFor ? () => parserFor(agentId) ?? this.createParser() : this.createParser;

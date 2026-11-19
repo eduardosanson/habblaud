@@ -60,6 +60,7 @@ export const ERR_OPENCODE_UNAVAILABLE = tr('não há como entregar ao OpenCode a
 export const ERR_OPENCODE_NOT_FETCHED = tr('o OpenCode não aceitou a mensagem a tempo');
 export const ERR_OPENCODE_NOT_CONFIRMED = tr('o OpenCode não confirmou a entrega');
 export const ERR_OPENCODE_REFUSED = tr('o OpenCode recusou a mensagem');
+export const ERR_HERMES_UNAVAILABLE = tr('Mensagens para o Hermes ainda não estão disponíveis: use o terminal dele');
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -174,6 +175,7 @@ function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined
   if (!reachable) {
     if (a.provider === 'codex') return ERR_CODEX_UNAVAILABLE;
     if (a.provider === 'opencode') return ERR_OPENCODE_UNAVAILABLE;
+    if (a.provider === 'hermes') return ERR_HERMES_UNAVAILABLE;
     return tr('a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install e a sessão aberta num terminal)');
   }
   return undefined;

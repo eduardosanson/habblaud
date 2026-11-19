@@ -41,6 +41,7 @@ import { CodexSource } from './sources/codex/source';
 import { OpenCodeSource } from './sources/opencode/source';
 import { OpenCodeHistory } from './sources/opencode/history';
 import { openCodeServiceFile } from './sources/opencode/client';
+import { HermesSource } from './sources/hermes/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -160,6 +161,10 @@ const opencode = openCodeWanted
     })
   : undefined;
 if (opencode) agents.add(opencode);
+// Hermes: o plugin Python (mod/habblaud-hermes) manda eventos para /api/hermes/events. Sem eventos, a fonte não
+// aparece no snapshot; ela só existe para receber o plugin e some sozinha quando ninguém usa.
+const hermes = new HermesSource({ accounts, office });
+agents.add(hermes);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
@@ -414,6 +419,7 @@ const api = createApiHandler({
     return recentFolders(history ? await history.list().catch(() => []) : [], rooms);
   },
   codexLive,
+  hermes,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,

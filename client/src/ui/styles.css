@@ -383,6 +383,22 @@
     inset 0 0 0 5px var(--acc);
 }
 
+/* Conta do Hermes: canto em degrau de um lado e borda dupla, na cor quente da conta. */
+.ui-acc-chip[data-provider='hermes'] {
+  --step: 3px;
+  border-radius: 0;
+  background: #211a12;
+  color: var(--acc);
+  box-shadow:
+    inset 0 0 0 1px var(--acc),
+    inset 0 calc(var(--step) * -2) 0 rgba(0, 0, 0, 0.3);
+  clip-path: polygon(0 0, calc(100% - var(--step)) 0, 100% var(--step), 100% 100%, var(--step) 100%, 0 calc(100% - var(--step)));
+}
+
+.ui-acc-chip--lg[data-provider='hermes'] {
+  --step: 4px;
+}
+
 /* Selo de texto da ferramenta ao lado do nome da conta (fonte do sistema: na Pixelify o "C" parece "O"). */
 .ui-prov {
   display: inline-flex;
@@ -406,6 +422,10 @@
 
 .ui-prov[data-provider='opencode'] {
   color: #a7e8c8;
+}
+
+.ui-prov[data-provider='hermes'] {
+  color: #e7c58a;
 }
 
 .ui-prov--xs {

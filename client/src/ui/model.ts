@@ -322,8 +322,8 @@ export interface RoomGroup {
 
 function accountText(account: AccountInfo | undefined): string {
   if (!account) return '';
-  // A ferramenta entra na busca: "codex" acha os agentes do Codex; "opencode", os do OpenCode.
-  const provider = account.provider === 'codex' ? 'Codex' : account.provider === 'opencode' ? 'OpenCode' : '';
+  // A ferramenta entra na busca: "codex" acha os agentes do Codex; "opencode", os do OpenCode; "hermes", os do Hermes.
+  const provider = account.provider === 'codex' ? 'Codex' : account.provider === 'opencode' ? 'OpenCode' : account.provider === 'hermes' ? 'Hermes' : '';
   return [account.short, account.name, account.email ?? '', account.id, provider].join(' ');
 }
 
