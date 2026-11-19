@@ -2,6 +2,7 @@
 import type { AccountInfo, AgentInfo } from '../../../shared/types';
 import { roomTheme } from '../art';
 import type { UiComponent, UiContext } from './context';
+import { effectiveHiddenAccounts, filterAccounts, HERMES_GROUP, selectedHermesProfile } from './account-filter';
 import { moveAgent, orderAgents } from './agentorder';
 import { moveRoom, orderRooms } from './roomorder';
 import { h, iconButton, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle } from './dom';
@@ -41,7 +42,10 @@ export class Sidebar implements UiComponent {
   private input: HTMLInputElement;
   private query = '';
   private filters: HTMLElement;
+  private filtersWrap: HTMLElement;
   private filterList: KeyedList<AccountInfo, HTMLButtonElement>;
+  private hermesSelect: HTMLSelectElement;
+  private hermesSig = '';
   private scroller: HTMLElement;
   private rooms: KeyedList<RoomGroup>;
   private roomRefs = new WeakMap<HTMLElement, RoomRefs>();
@@ -94,14 +98,27 @@ export class Sidebar implements UiComponent {
         return b;
       },
       update: (b, a) => {
-        const hidden = this.ctx.prefs.hiddenAccounts.includes(a.id);
+        const group = a.id === HERMES_GROUP;
+        const hidden = group ? this.ctx.prefs.hideHermes : this.ctx.prefs.hiddenAccounts.includes(a.id);
         updateAccountChip(b.firstElementChild as HTMLElement, a);
         setText(b.lastElementChild!, a.name);
         setAttr(b, 'aria-pressed', String(!hidden));
-        setTitle(b, hidden ? tr('Mostrar a {0} na lista, no feed e nos avisos', [a.name]) : tr('Ocultar a {0} na lista, no feed e nos avisos (o escritório continua mostrando todos)', [a.name]));
+        setTitle(
+          b,
+          group
+            ? hidden
+              ? tr('Mostrar os agentes do Hermes na lista, no feed e nos avisos')
+              : tr('Ocultar os agentes do Hermes na lista, no feed e nos avisos (o escritório continua mostrando todos)')
+            : hidden
+              ? tr('Mostrar a {0} na lista, no feed e nos avisos', [a.name])
+              : tr('Ocultar a {0} na lista, no feed e nos avisos (o escritório continua mostrando todos)', [a.name]),
+        );
         b.classList.toggle('is-off', hidden);
       },
     });
+    this.hermesSelect = h('select', { class: 'ui-acc-select', attrs: { 'aria-label': tr('Filtrar perfis do Hermes') } });
+    this.hermesSelect.addEventListener('change', () => this.ctx.updatePrefs({ hermesProfile: this.hermesSelect.value, hideHermes: false }));
+    this.filtersWrap = h('div', { class: 'ui-side__filters' }, this.filters, this.hermesSelect);
 
     this.scroller = h('div', { class: 'ui-side__scroll' });
     const list = h('div', { class: 'ui-rooms', role: 'list', attrs: { 'aria-label': tr('Salas') } });
@@ -121,7 +138,7 @@ export class Sidebar implements UiComponent {
         click: () => {
           this.input.value = '';
           this.query = '';
-          this.ctx.updatePrefs({ hiddenAccounts: [] });
+          this.ctx.updatePrefs({ hiddenAccounts: [], hideHermes: false, hermesProfile: '' });
         },
       },
     });
@@ -132,7 +149,7 @@ export class Sidebar implements UiComponent {
     this.el = h(
       'aside',
       { class: 'ui-panel ui-sidebar', attrs: { 'aria-label': tr('Salas e agentes'), id: 'ui-sidebar' } },
-      h('div', { class: 'ui-side__head' }, h('div', { class: 'ui-side__title' }, h('h2', { text: tr('Escritório') }), close), search, this.filters),
+      h('div', { class: 'ui-side__head' }, h('div', { class: 'ui-side__title' }, h('h2', { text: tr('Escritório') }), close), search, this.filtersWrap),
       this.scroller,
     );
   }
@@ -145,9 +162,11 @@ export class Sidebar implements UiComponent {
   render(): void {
     const snap = this.ctx.store.snapshot;
     const accounts = snap?.accounts ?? [];
-    const hidden = new Set(this.ctx.prefs.hiddenAccounts);
-    this.filterList.sync(accounts.length > 1 ? accounts : []);
-    setHidden(this.filters, accounts.length <= 1);
+    const hermes = accounts.filter((a) => a.provider === 'hermes');
+    const hidden = effectiveHiddenAccounts(accounts, this.ctx.prefs);
+    this.filterList.sync(accounts.length > 1 ? filterAccounts(accounts) : []);
+    setHidden(this.filtersWrap, accounts.length <= 1);
+    this.renderHermesSelect(hermes);
 
     // Ordem das salas escolhida pelo usuário (arrastando o cabeçalho da sala).
     const groups = orderRooms(groupRooms(snap, { query: this.query, hiddenAccounts: hidden }), (g) => g.room.id);
@@ -186,7 +205,34 @@ export class Sidebar implements UiComponent {
     }
   }
 
+  private renderHermesSelect(hermes: readonly AccountInfo[]): void {
+    const selected = selectedHermesProfile(hermes, this.ctx.prefs);
+    const sig = hermes.map((a) => `${a.id}:${a.name}`).join('|');
+    if (sig !== this.hermesSig) {
+      this.hermesSig = sig;
+      const options: HTMLOptionElement[] = [h('option', { text: tr('Todos os perfis') })];
+      options[0].value = '';
+      for (const account of hermes) {
+        const option = h('option', { text: account.id === 'default' ? tr('padrão') : account.id });
+        option.value = account.id;
+        options.push(option);
+      }
+      this.hermesSelect.replaceChildren(...options);
+    }
+    this.hermesSelect.value = selected;
+    this.hermesSelect.disabled = this.ctx.prefs.hideHermes;
+    setHidden(this.hermesSelect, hermes.length <= 1);
+    setTitle(
+      this.hermesSelect,
+      this.ctx.prefs.hideHermes ? tr('Ligue o Hermes no topo para filtrar por perfil') : tr('Filtrar os agentes do Hermes por perfil'),
+    );
+  }
+
   private toggleAccount(id: string): void {
+    if (id === HERMES_GROUP) {
+      this.ctx.updatePrefs({ hideHermes: !this.ctx.prefs.hideHermes });
+      return;
+    }
     const set = new Set(this.ctx.prefs.hiddenAccounts);
     if (set.has(id)) set.delete(id);
     else set.add(id);

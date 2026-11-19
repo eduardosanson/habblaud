@@ -36,6 +36,9 @@ do meio (0.**3**.0).
   O instalador configura as chaves necessárias em cada perfil e o `uninstall` limpa. Um heartbeat de 30 s mantém a
   sessão viva no escritório e a traz de volta sozinha depois de reiniciar o Habblaud; a mesma sessão vista em mais
   de um perfil do gateway não duplica o agente.
+- **Filtro do Hermes por perfil.** No topo da lista, os perfis do Hermes aparecem como um único chip “Hermes”; um
+  select logo abaixo escolhe o perfil, e o filtro vale para a lista, o feed e os avisos. As contas do Claude Code,
+  Codex e OpenCode continuam com um chip cada.
 
 ## [1.0.3] - 2026-10-16
 

@@ -36,6 +36,12 @@ describe('preferências', () => {
     expect(p.sound).toBe(false);
     expect(p.hiddenAccounts).toEqual(['.claude']);
   });
+  it('filtro do Hermes: grupo e perfil validados', () => {
+    expect(sanitizePrefs({})).toMatchObject({ hideHermes: false, hermesProfile: '' });
+    expect(sanitizePrefs({ hideHermes: true, hermesProfile: 'developer' })).toMatchObject({ hideHermes: true, hermesProfile: 'developer' });
+    expect(sanitizePrefs({ hideHermes: 'sim', hermesProfile: 42 })).toMatchObject({ hideHermes: false, hermesProfile: '' });
+    expect(sanitizePrefs({ hermesProfile: '  x  ' }).hermesProfile).toBe('x');
+  });
   it('salva e carrega de volta', () => {
     const st = memoryStorage();
     savePrefs(st, { ...DEFAULT_PREFS, bubbles: 'none', feedOpen: false });

@@ -1541,6 +1541,28 @@
   gap: 6px;
 }
 
+/* Hermes é um chip só no topo; o select escolhe o perfil. */
+.ui-side__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-acc-select {
+  width: 100%;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--ui-line);
+  border-radius: 7px;
+  background: var(--ui-bg-soft);
+  color: inherit;
+  font-size: 12px;
+}
+
+.ui-acc-select:disabled {
+  opacity: 0.45;
+}
+
 .ui-acc-filter {
   display: inline-flex;
   align-items: center;

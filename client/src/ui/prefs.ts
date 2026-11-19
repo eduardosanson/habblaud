@@ -23,6 +23,10 @@ export interface UiPrefs {
   feedOpen: boolean;
   /** Contas ocultas na barra lateral (AccountInfo.id). */
   hiddenAccounts: string[];
+  /** Hermes: o grupo inteiro está desligado no filtro do topo. */
+  hideHermes: boolean;
+  /** Hermes: perfil escolhido no select ('' = todos os perfis). */
+  hermesProfile: string;
   /** Habblaud World: aviso quando o primeiro visitante entra no seu prédio (a cada conexão). Ligado por padrão. */
   worldVisitNotify: boolean;
 }
@@ -39,6 +43,8 @@ export const DEFAULT_PREFS: UiPrefs = {
   sidebarOpen: true,
   feedOpen: true,
   hiddenAccounts: [],
+  hideHermes: false,
+  hermesProfile: '',
   worldVisitNotify: true,
 };
 
@@ -65,6 +71,8 @@ export function sanitizePrefs(raw: unknown): UiPrefs {
     sidebarOpen: bool(o.sidebarOpen, d.sidebarOpen),
     feedOpen: bool(o.feedOpen, d.feedOpen),
     hiddenAccounts: Array.isArray(o.hiddenAccounts) ? o.hiddenAccounts.filter((x): x is string => typeof x === 'string').slice(0, 20) : [],
+    hideHermes: bool(o.hideHermes, d.hideHermes),
+    hermesProfile: typeof o.hermesProfile === 'string' ? o.hermesProfile.trim().slice(0, 200) : d.hermesProfile,
     worldVisitNotify: bool(o.worldVisitNotify, d.worldVisitNotify),
   };
 }

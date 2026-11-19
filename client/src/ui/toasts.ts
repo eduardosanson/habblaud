@@ -1,6 +1,7 @@
 // Avisos rápidos (toasts) no canto inferior direito da área livre (acima do feed, à esquerda da gaveta).
 import type { Notice, NoticeLevel } from '../../../shared/types';
 import { createAvatar } from './avatar';
+import { isAccountHidden } from './account-filter';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, prefersReducedMotion, setHidden, setText } from './dom';
 import { ICONS } from './icons';
@@ -38,7 +39,8 @@ export class Toasts implements UiComponent {
     // Contas ocultas no filtro da barra lateral não geram avisos, exceto "precisa de você" (exige ação).
     if (n.level !== 'alert' && n.agentId) {
       const acc = this.ctx.agent(n.agentId)?.account;
-      if (acc && this.ctx.prefs.hiddenAccounts.includes(acc)) return;
+      const accounts = this.ctx.store.snapshot?.accounts ?? [];
+      if (acc && isAccountHidden(accounts, this.ctx.prefs, acc)) return;
     }
     const key = `${n.level}|${n.agentId ?? ''}|${n.text}`;
     const dup = this.toasts.find((t) => t.key === key && n.at - t.notice.at < DEDUPE_MS);

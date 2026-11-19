@@ -3332,4 +3332,11 @@ export const EN: Readonly<Record<string, string>> = {
   "o plugin do Hermes não está conectado (npm run hermes:install e a sessão aberta)": "the Hermes plugin isn't connected (npm run hermes:install with the session open)",
   "Pedindo aprovação": "Requesting approval",
   "Aprovação recusada": "Approval denied",
+  "Mostrar os agentes do Hermes na lista, no feed e nos avisos": "Show Hermes agents in the list, feed and notices",
+  "Ocultar os agentes do Hermes na lista, no feed e nos avisos (o escritório continua mostrando todos)": "Hide Hermes agents in the list, feed and notices (the office still shows everyone)",
+  "Filtrar perfis do Hermes": "Filter Hermes profiles",
+  "Todos os perfis": "All profiles",
+  "padrão": "default",
+  "Ligue o Hermes no topo para filtrar por perfil": "Turn Hermes on at the top to filter by profile",
+  "Filtrar os agentes do Hermes por perfil": "Filter Hermes agents by profile",
 };
