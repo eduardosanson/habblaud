@@ -71,6 +71,11 @@ describe('HermesSource: sessão principal', () => {
     source.applyEvent(ev('assistant_message', { session_id: 's1', text: 'depois', turn_id: 't2' }));
     expect((await stream.poll()).append).toMatchObject([{ kind: 'assistant', text: 'depois' }]);
     expect((await stream.poll()).append).toEqual([]);
+
+    // Quem já estava com o terminal aberto vê o encerramento; uma conexão nova não abre mais.
+    source.applyEvent(ev('session_end', { session_id: 's1', completed: true }));
+    expect((await stream.poll()).append).toMatchObject([{ kind: 'system', text: 'Sessão encerrada' }]);
+    expect(source.messageStream(MAIN)).toBeUndefined();
   });
 
   it('busy/idle, ferramenta (uma vez por call), uso (uma vez por id) e aprovação', () => {

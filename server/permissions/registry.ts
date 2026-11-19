@@ -255,7 +255,11 @@ export function applyPermission(a: AgentInfo, p: PermissionRequestInfo | undefin
     a.status = 'waiting';
     a.statusSince = p.createdAt;
   }
-  a.waitingFor ??= isQuestion(p) ? tr('responder uma pergunta') : p.provider === 'codex' || p.provider === 'hermes' ? tr('aprovar um comando') : tr('aprovar uma permissão');
+  a.waitingFor ??= isQuestion(p)
+    ? tr('responder uma pergunta')
+    : p.provider === 'codex' || p.provider === 'hermes'
+      ? tr('aprovar um comando')
+      : tr('aprovar uma permissão');
   return a;
 }
 
@@ -416,7 +420,13 @@ export class PermissionRegistry {
     const now = this.now();
     const id = `p-${now.toString(36)}-${++this.seq}-${randomBytes(9).toString('base64url')}`;
     // Codex/Hermes: título e argumentos pelos nomes de ferramenta de cada um.
-    const view = codex ? codexToolView(req.tool, req.input, req.cwd) : hermes ? hermesToolView(req.tool, req.input, req.cwd) : 'title' in desc ? desc : toolView(req.tool, req.input, req.cwd);
+    const view = codex
+      ? codexToolView(req.tool, req.input, req.cwd)
+      : hermes
+        ? hermesToolView(req.tool, req.input, req.cwd)
+        : 'title' in desc
+          ? desc
+          : toolView(req.tool, req.input, req.cwd);
     const info: PermissionRequestInfo = { id, tool: req.tool, title: view.title, text: desc.text, icon: desc.icon, createdAt: now, expiresAt: now + req.timeoutMs };
     if (codex) info.provider = 'codex';
     if (hermes) info.provider = 'hermes';

@@ -368,7 +368,7 @@ export class HermesSource implements AgentSource {
     t.lastSeenAt = Math.max(t.lastSeenAt, at);
     const failed = ev.failed === true || str(ev.turn_exit_reason)?.startsWith('error') === true;
     if (failed) this.addActivity(t, { id: `${t.key}:failed:${at}`, at, kind: 'error', icon: '⚠️', text: tr('A sessão falhou') });
-    this.systemEntry(t, `${t.key}:end:${at}`, at, failed ? tr('A sessão falhou') : tr('Sessão encerrada'), str(ev.turn_exit_reason));
+    this.systemEntry(t, `${t.key}:end`, at, failed ? tr('A sessão falhou') : tr('Sessão encerrada'), str(ev.turn_exit_reason));
     this.leave(t);
   }
 
@@ -653,21 +653,25 @@ export class HermesSource implements AgentSource {
 class HermesTerminalStream implements MessageStream {
   readonly intervalMs = 600;
   private lastSeq = 0;
+  /** O tracker fica preso à conexão: quem já estava olhando vê o aviso de sessão encerrada. */
+  private readonly first: Tracker | undefined;
 
   constructor(
     private readonly id: string,
     private readonly tracker: () => Tracker | undefined,
-  ) {}
+  ) {
+    this.first = tracker();
+  }
 
   async load(): Promise<TerminalInit> {
-    const all = this.tracker()?.terminal ?? [];
+    const all = (this.first ?? this.tracker())?.terminal ?? [];
     const entries = all.slice(-500).map((x) => x.entry);
     this.lastSeq = all.length ? all[all.length - 1].seq : 0;
     return { agentId: this.id, entries, truncated: all.length > entries.length };
   }
 
   async poll(): Promise<MessageDelta> {
-    const all = this.tracker()?.terminal ?? [];
+    const all = (this.first ?? this.tracker())?.terminal ?? [];
     const fresh = all.filter((x) => x.seq > this.lastSeq);
     if (all.length) this.lastSeq = all[all.length - 1].seq;
     return { append: fresh.map((x) => x.entry) };
