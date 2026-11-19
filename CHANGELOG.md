@@ -27,8 +27,8 @@ do meio (0.**3**.0).
   entrega como no Codex. Para o Claude Code, a dica agora lembra que o plugin de mensagens carrega ao abrir a sessão:
   instalar com a sessão já aberta não basta.
 - **Hermes no escritório.** Um plugin Python observa os hooks do Hermes e mostra no Habblaud as sessões, o que cada
-  uma está fazendo, ferramentas, subagentes, tokens e as aprovações. Cada perfil do Hermes vira uma conta e a sala é
-  o diretório de trabalho do perfil.
+  uma está fazendo, ferramentas, subagentes, tokens e as aprovações. Cada perfil do Hermes vira uma conta com o nome
+  “Hermes” + as iniciais do perfil (ex.: “Hermes DO”), e a sala é o diretório de trabalho do perfil.
 - **Terminal, mensagens e aprovações do Hermes.** A conversa da sessão aberta aparece no terminal do Habblaud
   (prompts, respostas, ferramentas e resultados, inclusive no subagente). A caixa de mensagem injeta o texto na
   sessão pelo `ctx.inject_message` do Hermes, com fila e confirmação de entrega. E os pedidos de aprovação viram

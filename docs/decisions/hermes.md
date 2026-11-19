@@ -43,7 +43,8 @@
 ## EVIDÊNCIAS → PR (Fase B) — 2026-11-19
 
 - Decisão: cada perfil do Hermes tem a própria pasta `plugins/`, então o instalador cria o symlink também em `profiles/*/plugins` — o link da base sozinho não chega aos perfis (descoberto na instalação real).
-- Risco aceito: instalar em 28 perfis é mais lento e mexe em cada `config.yaml` via `hermes config set`; o uninstall limpa as três chaves e os symlinks.
+- Risco aceito: instalar em 27 perfis é mais lento e mexe em cada `config.yaml` via `hermes config set`; o uninstall limpa as três chaves e os symlinks.
 
-- Decisão: cada perfil do Hermes tem a própria pasta `plugins/`, então o instalador cria o symlink também em `profiles/*/plugins` — o link da base sozinho não chega aos perfis (descoberto na instalação real).
-- Risco aceito: instalar em 28 perfis é mais lento e mexe em cada `config.yaml` via `hermes config set`; o uninstall limpa as três chaves e os symlinks.
+## EVIDÊNCIAS → PR (nome da conta) — 2026-11-19
+
+- Decisão: a conta do Hermes mostra `Hermes` + iniciais do perfil (até 3 no nome, até 2 no chip), em vez do nome inteiro do perfil; as contas do Claude Code ficam como estão.

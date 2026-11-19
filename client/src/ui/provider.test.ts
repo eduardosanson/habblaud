@@ -82,7 +82,7 @@ describe('ferramenta (Claude Code, Codex, OpenCode ou Hermes)', () => {
     expect(showsProviderTag('opencode', 'Conta O')).toBe(true);
     expect(showsProviderTag('opencode', 'OpenCode')).toBe(false);
     expect(showsProviderTag('hermes', 'Conta H')).toBe(true);
-    expect(showsProviderTag('hermes', 'Hermes developer')).toBe(false);
+    expect(showsProviderTag('hermes', 'Hermes D')).toBe(false);
     expect(showsProviderTag('claude', 'Conta C')).toBe(false);
   });
 
@@ -94,7 +94,7 @@ describe('ferramenta (Claude Code, Codex, OpenCode ou Hermes)', () => {
     expect(accountChipLabel({ name: 'Outra', plan: 'Go', provider: 'opencode' }, 'opencode', 'opencode')).toBe('Outra · OpenCode · plano Go');
     expect(accountChipLabel({ name: 'OpenCode', provider: 'opencode' }, 'opencode', 'opencode')).toBe('OpenCode');
     expect(accountChipLabel(undefined, 'opencode', 'opencode')).toBe('opencode · OpenCode');
-    expect(accountChipLabel({ name: 'Hermes developer', provider: 'hermes' }, 'developer', 'hermes')).toBe('Hermes developer');
+    expect(accountChipLabel({ name: 'Hermes D', provider: 'hermes' }, 'developer', 'hermes')).toBe('Hermes D');
     expect(accountChipLabel(undefined, 'hermes', 'hermes')).toBe('hermes · Hermes');
     expect(accountChipLabel(undefined, '', 'claude')).toBe('Conta desconhecida');
   });

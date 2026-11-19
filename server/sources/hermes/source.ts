@@ -119,6 +119,16 @@ function profileName(raw: unknown): string {
   return name ? truncate(name, 80) : 'default';
 }
 
+/**
+ * Iniciais do perfil para o nome da conta: "developer" → "D", "dev-orchestrator" → "DO",
+ * "projetos-3d-claude" → "P3C". Até 3, para o nome curto não virar o perfil inteiro.
+ */
+export function profileInitials(name: string): string {
+  const parts = name.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  const initials = parts.map((part) => part[0]).join('').toUpperCase();
+  return (initials || 'H').slice(0, 3);
+}
+
 export class HermesSource implements AgentSource {
   readonly provider = 'hermes' as const;
   private readonly now: () => number;
@@ -263,8 +273,8 @@ export class HermesSource implements AgentSource {
       p = {
         name,
         home: h,
-        short: name === 'default' ? 'H' : (name[0] ?? 'H').toUpperCase(),
-        display: name === 'default' ? 'Hermes' : `Hermes ${name}`,
+        short: name === 'default' ? 'H' : profileInitials(name).slice(0, 2),
+        display: name === 'default' ? 'Hermes' : `Hermes ${profileInitials(name)}`,
         color: ACCOUNT_COLORS[this.profiles.size % ACCOUNT_COLORS.length],
       };
       this.profiles.set(name, p);

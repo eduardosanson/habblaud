@@ -6,7 +6,7 @@ import { AccountsService } from '../../accounts/service';
 import { setQuiet } from '../../log';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
-import { HermesSource } from './source';
+import { HermesSource, profileInitials } from './source';
 import type { HermesEventBody } from './events';
 
 setQuiet(true);
@@ -47,8 +47,22 @@ describe('HermesSource: sessão principal', () => {
     const a = agent(office, MAIN);
     expect(a).toMatchObject({ kind: 'main', provider: 'hermes', account: 'developer', sessionId: 's1', roomId: '/p/loja', status: 'idle' });
     expect(a?.role).toBe('Hermes (cli)');
-    expect(accounts.entriesOf('hermes').map((e) => [e.id, e.detected.name])).toEqual([['developer', 'Hermes developer']]);
+    expect(accounts.entriesOf('hermes').map((e) => [e.id, e.detected.name])).toEqual([['developer', 'Hermes D']]);
     expect(source.sources()).toEqual([{ label: 'hermes', provider: 'hermes', path: DEV, sessions: 1, ok: true }]);
+  });
+
+  it('conta do Hermes usa as iniciais do perfil, não o nome inteiro', () => {
+    expect(profileInitials('developer')).toBe('D');
+    expect(profileInitials('dev-orchestrator')).toBe('DO');
+    expect(profileInitials('impl-g')).toBe('IG');
+    expect(profileInitials('projetos-3d-claude')).toBe('P3C');
+    const { accounts, source } = setup();
+    source.applyEvent(ev('session_open', { session_id: 's1' }, 'dev-orchestrator', `${HOME}/profiles/dev-orchestrator`));
+    source.applyEvent(ev('session_open', { session_id: 's2' }, 'impl-g', `${HOME}/profiles/impl-g`));
+    expect(accounts.entriesOf('hermes').map((e) => [e.id, e.detected.short, e.detected.name])).toEqual([
+      ['dev-orchestrator', 'DO', 'Hermes DO'],
+      ['impl-g', 'IG', 'Hermes IG'],
+    ]);
   });
 
   it('terminal: history, prompt, resposta, ferramenta e resultado; stream entrega init e append', async () => {

@@ -47,7 +47,8 @@ permissões ficam para as fases seguintes.
 
 ## Critérios de aceite
 
-- CA01: `session_open` cria o agente `hermes:<perfil>:<sessão>` na sala do projeto, com conta do perfil e status idle.
+- CA01: `session_open` cria o agente `hermes:<perfil>:<sessão>` na sala do projeto, com conta do perfil (nome
+  “Hermes” + iniciais, ex.: “Hermes D”) e status idle.
 - CA02: `session_busy` deixa working; `session_idle`, idle; `session_end`, offline.
 - CA03: `tool_start` gera atividade e conta uma ferramenta; repetir o mesmo `call_id` não conta de novo.
 - CA04: `subagent_start` cria o subagente sob o principal; ferramentas da sessão filha aparecem nele; `subagent_stop`
