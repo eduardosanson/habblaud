@@ -65,6 +65,20 @@ describe('HermesSource: sessão principal', () => {
     ]);
   });
 
+  it('heartbeat mantém a sessão viva e recria o agente depois de um reinício do Habblaud', () => {
+    const { office, source } = setup();
+    source.applyEvent(ev('session_open', { session_id: 's1', platform: 'cli', project: '/p/loja' }));
+    source.applyEvent(ev('session_idle', { session_id: 's1' }));
+    // Quem já está aqui só renova a presença; o status atual (idle) não vira working.
+    source.applyEvent(ev('session_heartbeat', { session_id: 's1', platform: 'cli', project: '/p/loja', status: 'working' }));
+    expect(agent(office, MAIN)?.status).toBe('idle');
+    // Sessão encerrada: o heartbeat com a mesma sessão a traz de volta, já no status que o plugin lembra.
+    source.applyEvent(ev('session_end', { session_id: 's1', completed: true }));
+    expect(agent(office, MAIN)?.status).toBe('offline');
+    source.applyEvent(ev('session_heartbeat', { session_id: 's1', platform: 'cli', project: '/p/loja', status: 'working' }));
+    expect(agent(office, MAIN)).toMatchObject({ status: 'working', roomId: '/p/loja', kind: 'main' });
+  });
+
   it('terminal: history, prompt, resposta, ferramenta e resultado; stream entrega init e append', async () => {
     const { source } = setup();
     source.applyEvent(ev('session_open', { session_id: 's1', platform: 'cli', project: '/p/loja' }));

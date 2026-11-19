@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_PORT = 4747
 QUEUE_MAX = 256
 POST_TIMEOUT_S = 1.5
+HEARTBEAT_S = 30.0
 PREVIEW_MAX = 200
 WARN_EVERY_S = 60.0
 DISABLED_VALUES = {"0", "false", "off", "no"}
@@ -64,6 +65,9 @@ _poller_started = False
 _poller_lock = threading.Lock()
 _history_sent: set[str] = set()
 _history_lock = threading.Lock()
+_live: dict[str, dict[str, Any]] = {}
+_live_lock = threading.Lock()
+_heartbeat_at = 0.0
 _approval_context: dict[str, dict[str, str]] = {}
 _approval_lock = threading.Lock()
 _event_seq = 0
@@ -350,7 +354,50 @@ def _publish(event: Dict[str, Any]) -> None:
 # Hooks (todos observadores; sempre devolvem None)
 # ---------------------------------------------------------------------------
 
+def _remember_session(session_id: Any, status: str = "idle", *, platform: Any = None, project: Any = None) -> None:
+    """Guarda a sessão viva para o heartbeat recriar o agente depois de um reinício do Habblaud."""
+    sid = str(session_id or "")
+    if not sid:
+        return
+    with _live_lock:
+        info = _live.setdefault(sid, {})
+        info["status"] = status
+        if platform:
+            info["platform"] = str(platform)
+        if project:
+            info["project"] = str(project)
+
+
+def _forget_session(session_id: Any) -> None:
+    sid = str(session_id or "")
+    if sid:
+        with _live_lock:
+            _live.pop(sid, None)
+
+
+def _heartbeat_once(now: Optional[float] = None) -> None:
+    """A cada 30 s, lembra o escritório das sessões vivas (o Habblaud pode ter reiniciado no meio)."""
+    global _heartbeat_at
+    moment = time.monotonic() if now is None else now
+    if moment - _heartbeat_at < HEARTBEAT_S:
+        return
+    _heartbeat_at = moment
+    with _live_lock:
+        sessions = list(_live.items())
+    for sid, info in sessions:
+        if _disabled():
+            return
+        _publish({
+            "type": "session_heartbeat",
+            "session_id": sid,
+            "platform": info.get("platform"),
+            "project": info.get("project"),
+            "status": info.get("status") or "idle",
+        })
+
+
 def _on_session_open(**kw: Any) -> None:
+    _remember_session(kw.get("session_id"), platform=kw.get("platform"), project=_project(kw))
     _publish({
         "type": "session_open",
         "session_id": kw.get("session_id"),
@@ -362,6 +409,7 @@ def _on_session_open(**kw: Any) -> None:
 
 
 def _on_session_start(**kw: Any) -> None:
+    _remember_session(kw.get("session_id"), platform=kw.get("platform"), project=_project(kw))
     _publish({
         "type": "session_start",
         "session_id": kw.get("session_id"),
@@ -373,6 +421,7 @@ def _on_session_start(**kw: Any) -> None:
 
 
 def _on_session_end(**kw: Any) -> None:
+    _forget_session(kw.get("session_id"))
     _publish({
         "type": "session_end",
         "session_id": kw.get("session_id"),
@@ -385,14 +434,17 @@ def _on_session_end(**kw: Any) -> None:
 
 
 def _on_session_finalize(**kw: Any) -> None:
+    _forget_session(kw.get("session_id"))
     _publish({"type": "session_finalize", "session_id": kw.get("session_id")})
 
 
 def _on_session_reset(**kw: Any) -> None:
+    _forget_session(kw.get("session_id"))
     _publish({"type": "session_reset", "session_id": kw.get("session_id")})
 
 
 def _on_session_delete(**kw: Any) -> None:
+    _forget_session(kw.get("session_id"))
     _publish({"type": "session_delete", "session_id": kw.get("session_id")})
 
 
@@ -427,6 +479,7 @@ def _publish_history(session_id: str, history: Any) -> None:
 def _pre_llm_call(**kw: Any) -> None:
     sid = kw.get("session_id")
     if isinstance(sid, str) and sid:
+        _remember_session(sid, "working", platform=kw.get("platform"))
         _publish_history(sid, kw.get("conversation_history"))
         text = _text_of(kw.get("user_message"))
         if text.strip():
@@ -437,6 +490,7 @@ def _pre_llm_call(**kw: Any) -> None:
 def _post_llm_call(**kw: Any) -> None:
     sid = kw.get("session_id")
     if isinstance(sid, str) and sid:
+        _remember_session(sid, "idle", platform=kw.get("platform"))
         text = _text_of(kw.get("assistant_response"))
         if text.strip():
             _publish({"type": "assistant_message", "session_id": sid, "text": text, "turn_id": kw.get("turn_id")})
@@ -446,6 +500,8 @@ def _post_llm_call(**kw: Any) -> None:
 def _pre_tool_call(**kw: Any) -> None:
     sid = str(kw.get("session_id") or "")
     call = str(kw.get("tool_call_id") or kw.get("call_id") or "")
+    if sid:
+        _remember_session(sid, "working")
     _current_session_id.set(sid)
     _current_call_id.set(call)
     _publish({
@@ -507,6 +563,8 @@ def _approval_identity(kw: Dict[str, Any]) -> tuple[str, str]:
 
 def _pre_approval_request(**kw: Any) -> None:
     sid, call = _approval_identity(kw)
+    if sid:
+        _remember_session(sid, "working")
     request_id = str(kw.get("request_id") or "")
     if request_id and sid:
         with _approval_lock:
@@ -524,6 +582,8 @@ def _pre_approval_request(**kw: Any) -> None:
 
 def _post_approval_response(**kw: Any) -> None:
     sid, call = _approval_identity(kw)
+    if sid:
+        _remember_session(sid, "working")
     request_id = str(kw.get("request_id") or "")
     if request_id:
         with _approval_lock:
@@ -670,6 +730,7 @@ def _poll_inbox() -> None:
     """Polls the office for messages and injects them into the live Hermes sessions."""
     while True:
         try:
+            _heartbeat_once()
             _poll_once()
         except Exception as exc:
             _warn(exc)

@@ -1,11 +1,9 @@
 // Fonte de agentes do Hermes (AgentSource 'hermes'): o plugin mod/habblaud-hermes observa os hooks do Hermes e manda
-// eventos para POST /api/hermes/events. Não há leitura de transcript nesta fase: o escritório mostra sessões,
-// status, atividades, subagentes, aprovações (só o estado "esperando") e tokens; terminal/histórico ficam para a
-// próxima fase.
-//
-// Cada perfil do Hermes (~/.hermes ou ~/.hermes/profiles/<nome>) vira uma conta. A sala é o `project` que o plugin
-// manda (o `terminal.cwd` do perfil, quando existe); sem ele, a pasta do perfil. Eventos são observações: nada volta
-// para a sessão do Hermes e um evento inválido é ignorado.
+// eventos para POST /api/hermes/events. O escritório mostra sessões, status, atividades, subagentes, aprovações e
+// tokens; a conversa da sessão viva vem dos hooks do plugin (sem transcript em arquivo) e o terminal usa esse buffer.
+// Cada perfil vira uma conta. A sala é o `project` que o plugin manda (o `terminal.cwd` do perfil, quando existe);
+// sem ele, a pasta do perfil. Eventos são observações: nada volta para a sessão do Hermes e um evento inválido é
+// ignorado.
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Activity, AgentStatus, SourceInfo, TerminalEntry, TerminalInit } from '../../../shared/types';
@@ -112,6 +110,7 @@ const KNOWN_TYPES = new Set([
   'history',
   'user_message',
   'assistant_message',
+  'session_heartbeat',
 ]);
 
 function profileName(raw: unknown): string {
@@ -205,6 +204,22 @@ export class HermesSource implements AgentSource {
     if (!sessionId) return false;
 
     if (type === 'usage') return this.usage(profile, sessionId, ev, at);
+
+    // Heartbeat: mantém a sessão viva no escritório e recria o agente depois de um reinício do Habblaud, sem
+    // esperar o próximo turno. Num agente que já está aqui, só renova a presença (não mexe no status atual).
+    if (type === 'session_heartbeat') {
+      const existing = this.trackerFor(profile, sessionId);
+      if (existing) {
+        existing.lastSeenAt = Math.max(existing.lastSeenAt, at);
+        existing.platform = str(ev.platform) ?? existing.platform;
+        this.applySummary(existing);
+        return true;
+      }
+      if (!this.sessionStart(profile, sessionId, ev, at)) return false;
+      const created = this.trackerFor(profile, sessionId);
+      if (created && str(ev.status) === 'working') this.setStatus(created, 'working');
+      return true;
+    }
 
     const t = this.trackerFor(profile, sessionId);
     if (type === 'session_open' || type === 'session_start') {

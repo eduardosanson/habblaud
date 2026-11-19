@@ -16,8 +16,10 @@ escritório. Nunca bloqueia o agente.
 - **Aprovações:** o pedido vira um cartão no escritório; aprovar/recusar responde ao Hermes e “Responder no terminal”
   devolve o pedido para lá (o prompt embutido aparece).
 - **Tokens:** `post_api_request` soma entrada/saída por sessão (sem custo, que o Hermes não informa).
-- **Contas e salas:** cada perfil do Hermes (`~/.hermes/profiles/<nome>` ou `~/.hermes`) vira uma conta; a sala é o
-  `terminal.cwd` do perfil (ou `HABBLAUD_HERMES_PROJECT`).
+- **Contas e salas:** cada perfil do Hermes (`~/.hermes/profiles/<nome>` ou `~/.hermes`) vira uma conta com o nome
+  “Hermes” + as iniciais do perfil; a sala é o `terminal.cwd` do perfil (ou `HABBLAUD_HERMES_PROJECT`).
+- **Presença:** um heartbeat a cada 30 s mantém a sessão viva no escritório e a traz de volta sozinha depois de
+  reiniciar o Habblaud.
 
 Sessões encerradas/antigas ficam fora: o plugin só observa sessões vivas.
 

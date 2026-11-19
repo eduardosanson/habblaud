@@ -249,3 +249,20 @@ def test_register_optional_hooks_and_approval_transport(tmp_path, monkeypatch):
     assert "poller" not in registered
     plugin._on_session_open(session_id="s1", platform="cli")
     assert "poller" in registered
+
+
+def test_heartbeat_remembers_live_sessions_and_forgets_ended_ones(tmp_path, monkeypatch):
+    plugin = load(tmp_path)
+    events = []
+    monkeypatch.setattr(plugin, "_publish", events.append)
+    monkeypatch.setattr(plugin, "_start_poller", lambda: None)
+    plugin._on_session_open(session_id="s1", platform="cli", project="/p/loja")
+    plugin._pre_llm_call(session_id="s1", platform="cli", user_message="oi", conversation_history=[])
+    plugin._heartbeat_once(now=31)
+    heartbeats = [e for e in events if e["type"] == "session_heartbeat"]
+    assert heartbeats == [
+        {"type": "session_heartbeat", "session_id": "s1", "platform": "cli", "project": "/p/loja", "status": "working"}
+    ]
+    plugin._on_session_end(session_id="s1", completed=True)
+    plugin._heartbeat_once(now=62)
+    assert len([e for e in events if e["type"] == "session_heartbeat"]) == 1

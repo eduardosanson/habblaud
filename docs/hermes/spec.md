@@ -98,6 +98,8 @@ mensagens e `register_approval_transport` para responder aprovações.
 - RF28: o terminal do subagente usa o tracker filho (`hermes:<perfil>:<pai>:<filho>`) e os eventos da sessão filha.
 - RF29: o endpoint `GET /api/hermes/sessions` lista as sessões principais no escritório para o plugin buscar a caixa;
   é local e não expõe conversa.
+- RF30: o plugin manda `session_heartbeat` a cada 30 s para cada sessão viva; se o Habblaud reiniciar, o
+  `HermesSource` recria o agente no status que o plugin lembra, sem esperar um turno novo.
 
 ### Requisitos não funcionais
 
@@ -121,6 +123,8 @@ mensagens e `register_approval_transport` para responder aprovações.
   “Responder no terminal” libera e cai no prompt embutido.
 - CA18: o instalador configura as três chaves por perfil; `uninstall` remove; `--dry-run` só mostra.
 - CA19: nada de senha/credencial no snapshot, log ou UI; o World continua sem Hermes.
+- CA20: depois de reiniciar o Habblaud, uma sessão viva volta ao escritório em até 30 s pelo heartbeat, mesmo sem
+  prompt novo; um agente que já está aqui não tem o status alterado pelo heartbeat.
 
 ### Definition of Done (Fase B)
 

@@ -33,7 +33,8 @@ do meio (0.**3**.0).
   (prompts, respostas, ferramentas e resultados, inclusive no subagente). A caixa de mensagem injeta o texto na
   sessão pelo `ctx.inject_message` do Hermes, com fila e confirmação de entrega. E os pedidos de aprovação viram
   cartões no escritório: aprovar ou recusar responde ao Hermes, e “Responder no terminal” devolve o pedido para lá.
-  O instalador configura as chaves necessárias em cada perfil e o `uninstall` limpa.
+  O instalador configura as chaves necessárias em cada perfil e o `uninstall` limpa. Um heartbeat de 30 s mantém a
+  sessão viva no escritório e a traz de volta sozinha depois de reiniciar o Habblaud.
 
 ## [1.0.3] - 2026-10-16
 

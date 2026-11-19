@@ -87,3 +87,5 @@
   devolve à fila para o dono buscar.
 - **Aprovação sem página:** o transport lança e o Hermes usa o prompt embutido (`transport_fallback: builtin`).
 - **Sempre permitir:** o transport só responde `once`/`deny`; escopos de sessão/permanente ficam no terminal.
+- **Habblaud reiniciado:** sem o heartbeat, o agente só voltaria no próximo turno; o plugin manda um sinal a cada
+  30 s e o escritório recria a sessão viva.

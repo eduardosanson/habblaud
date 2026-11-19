@@ -48,3 +48,8 @@
 ## EVIDÊNCIAS → PR (nome da conta) — 2026-11-19
 
 - Decisão: a conta do Hermes mostra `Hermes` + iniciais do perfil (até 3 no nome, até 2 no chip), em vez do nome inteiro do perfil; as contas do Claude Code ficam como estão.
+
+## EVIDÊNCIAS → PR (heartbeat) — 2026-11-19
+
+- Decisão: o plugin manda `session_heartbeat` a cada 30 s para as sessões vivas e o servidor recria o agente se ele não existe mais — reiniciar o Habblaud não deixa mais o Hermes invisível até o próximo turno.
+- Decisão: o heartbeat de um agente que já está no escritório só renova a presença; não sobrescreve `waiting`/`working` reais.

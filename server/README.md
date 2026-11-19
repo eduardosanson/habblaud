@@ -414,7 +414,8 @@ responde aprovações pelo escritório.
   `project` mandado pelo plugin (o `terminal.cwd` do perfil ou `HABBLAUD_HERMES_PROJECT`). Sem eventos, a fonte não
   aparece no snapshot/health.
 - **Presença:** `session_end` fecha; sessão sem evento por 2 h sai na varredura. `session_idle` não remove: o agente
-  fica no escritório ocioso.
+  fica no escritório ocioso. O plugin manda um `session_heartbeat` a cada 30 s; se o Habblaud reiniciar, o agente
+  volta em até 30 s mesmo sem um turno novo.
 - **Terminal:** o `HermesSource` guarda um buffer por agente (histórico do turno, prompt, resposta, ferramenta e
   resultado) e serve o mesmo SSE `GET /api/agents/:id/terminal` do Claude Code/Codex; o subagente tem o buffer da
   sessão filha. As ferramentas do Hermes viram `Bash/Read/Edit/Write/...` como no Claude Code.
