@@ -125,6 +125,13 @@ mesma trava do terminal e das permissões (porta presa ao `127.0.0.1` e cabeçal
 não desligado (`0`, `false`, `off` ou `no` desligam). Qualquer processo desta máquina que fale com o Habblaud
 consegue mandar uma mensagem às sessões com o plugin: por isso a trava local.
 
+## Hermes
+
+O Hermes tem um plugin próprio, em Python: [`habblaud-hermes`](habblaud-hermes/README.md). Ele não é um plugin do
+Claude Code e não entra no marketplace acima; instale com `npm run hermes:install` (symlink em
+`~/.hermes/plugins/habblaud` + `hermes plugins enable habblaud` no perfil padrão e nos perfis). O plugin só observa:
+manda eventos para `POST /api/hermes/events` e nunca lê a conversa.
+
 ## Desenvolver
 
 ```bash

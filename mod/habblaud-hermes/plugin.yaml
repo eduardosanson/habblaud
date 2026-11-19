@@ -1,0 +1,13 @@
+name: habblaud
+version: "1.0.3"
+description: "Mostra no Habblaud, em tempo real, o que os agentes do Hermes estão fazendo (sem ler a conversa)."
+author: "Habblaud"
+hooks:
+  - on_session_start
+  - on_session_end
+  - pre_tool_call
+  - post_tool_call
+  - subagent_start
+  - subagent_stop
+  - pre_approval_request
+  - post_approval_response
