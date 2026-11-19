@@ -1,5 +1,6 @@
 // Terminal (Server-Sent Events) em GET /api/agents/:id/terminal: a conversa da sessão
-// (prompts, respostas, ferramentas e resultados) reconstruída do transcript JSONL por sources/terminal.ts.
+// (prompts, respostas, ferramentas e resultados) reconstruída do transcript JSONL por sources/terminal.ts ou, para
+// ferramentas que não gravam arquivo (OpenCode), lida de um MessageStream assíncrono.
 // Eventos nomeados: init | append (o `data` é o de TerminalMessage em shared/types.ts). A rota
 // (http/app.ts) já conferiu que o recurso está ligado e que o acesso é local.
 //
@@ -9,12 +10,15 @@
 // Transcript truncado/substituído (ou trocado por /clear no mesmo processo) = parser novo e `init` de
 // novo. Agentes do demo não têm transcript: a conversa fictícia sai de demoTerminalEntries a cada ~500 ms.
 // Sessões do histórico (GET /api/sessions/:conta/:sessionId/terminal, http/sessions.ts) usam o mesmo
-// leitor sobre o transcript já validado pela rota, com polling mais espaçado (~2 s).
+// leitor sobre o transcript já validado pela rota, com polling mais espaçado (~2 s); a sessão do OpenCode usa o
+// stream dela pela mesma rota.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { demoTerminalEntries } from '../../shared/demo/terminal';
 import type { Activity, AgentInfo, TerminalEntry, TerminalInit } from '../../shared/types';
 import { errMsg, log } from '../log';
 import type { Office } from '../model/office';
+import type { HistorySession } from '../sources/source';
+import type { MessageStream } from '../sources/stream';
 import { FileTail } from '../sources/tail';
 import { createTerminalParser, type TerminalParser } from '../sources/terminal';
 import { sendJson } from './app';
@@ -49,6 +53,11 @@ export interface TerminalOptions {
    * = createParser.
    */
   parserFor?: (agentId: string) => TerminalParser | undefined;
+  /**
+   * Conversa de um agente cuja ferramenta não grava transcript em arquivo (SourceSet.messageStreamFor): um stream
+   * NOVO a cada chamada. Tem precedência sobre o transcript; ausente = o caminho de arquivo de sempre.
+   */
+  messageStreamFor?: (agentId: string) => MessageStream | undefined;
   /** Fábrica do parser padrão (testes); padrão: createTerminalParser (o do Claude Code). */
   createParser?: () => TerminalParser;
   /** Conversa fictícia dos agentes do demo (testes); padrão: demoTerminalEntries. */
@@ -69,12 +78,12 @@ interface PollResult {
   stop?: boolean;
 }
 
-/** De onde vem a conversa de uma conexão. */
+/** De onde vem a conversa de uma conexão. `load`/`poll` podem ser assíncronos (MessageStream); arquivo/demo são síncronos. */
 interface ConversationSource {
   readonly intervalMs: number;
   /** Conversa recente, para o `init`. */
-  load(): TerminalInit;
-  poll(): PollResult;
+  load(): TerminalInit | Promise<TerminalInit>;
+  poll(): PollResult | Promise<PollResult>;
 }
 
 /** Passa as linhas pelo parser; uma linha que o faça falhar é pulada sem perder o resto do lote. */
@@ -151,6 +160,25 @@ class TranscriptSource implements ConversationSource {
   }
 }
 
+/**
+ * Conversa vinda de uma fonte assíncrona (OpenCode): o terminal só repassa load/poll. Cada conexão cria o próprio
+ * stream (o estado — o que já saiu — é dela, como o parser de um arquivo).
+ */
+class MessageConversation implements ConversationSource {
+  constructor(
+    private readonly stream: MessageStream,
+    readonly intervalMs: number,
+  ) {}
+
+  load(): Promise<TerminalInit> {
+    return this.stream.load();
+  }
+
+  poll(): Promise<PollResult> {
+    return this.stream.poll();
+  }
+}
+
 /** Agente do demo: conversa fictícia montada do título e das atividades simuladas. */
 class DemoSource implements ConversationSource {
   /** Ids da última lista gerada (o que o cliente já tem). */
@@ -186,10 +214,20 @@ class DemoSource implements ConversationSource {
 interface Stream {
   res: ServerResponse;
   timer: ReturnType<typeof setInterval> | null;
+  /** Um poll assíncrono em andamento: o próximo tick não se acumula por cima. */
+  busy: boolean;
+}
+
+/** Erro de uma fonte que já traz o status HTTP (OpenCodeError 404, por exemplo): não vira 500. */
+function errorStatus(err: unknown): 400 | 403 | 404 | undefined {
+  const status = (err as { status?: unknown } | null | undefined)?.status;
+  return status === 400 || status === 403 || status === 404 ? status : undefined;
 }
 
 export class TerminalStreams {
   private streams = new Set<Stream>();
+  /** Conexões carregando o `init` (antes de virarem stream): contam no limite, senão um load lento fura o teto. */
+  private pending = 0;
   private pinger: ReturnType<typeof setInterval> | null = null;
   private readonly createParser: () => TerminalParser;
   private readonly demoEntries: NonNullable<TerminalOptions['demoEntries']>;
@@ -232,31 +270,46 @@ export class TerminalStreams {
   attach(req: IncomingMessage, res: ServerResponse, agentId: string): void {
     const source = this.sourceFor(agentId);
     if (typeof source === 'string') return sendJson(res, 404, { error: source });
-    this.serve(req, res, agentId, source);
+    void this.serve(req, res, agentId, source);
   }
 
   /**
-   * Abre a conversa de uma sessão do histórico pelo transcript `path` (a rota já validou conta, id e caminho).
-   * `streamId` vai no `init` (ex.: "session:<conta>:<sessionId>"); `createParser` é o da ferramenta da sessão
-   * (HistorySession.createParser; padrão: o do Claude Code). Mesmos erros de attach (429/500).
+   * Abre a conversa de uma sessão do histórico (a rota já validou conta e id): `streamId` vai no `init` (ex.:
+   * "session:<conta>:<sessionId>"). A sessão traz o transcript (com o parser da ferramenta dela) ou um stream
+   * assíncrono (OpenCode). Mesmos erros de attach (404/429/500).
    */
-  attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, path: string, createParser?: () => TerminalParser): void {
-    const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
-    this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
+  attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, session: HistorySession): void {
+    if ('stream' in session) {
+      const stream = session.stream();
+      void this.serve(req, res, streamId, new MessageConversation(stream, stream.intervalMs ?? this.sessionPollMs));
+      return;
+    }
+    const o = { transcriptPathOf: () => undefined, createParser: session.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
+    void this.serve(req, res, streamId, new TranscriptSource(streamId, session.path, o, this.sessionPollMs));
   }
 
   /** Limite de terminais, `init` e o stream SSE de uma fonte já escolhida. */
-  private serve(req: IncomingMessage, res: ServerResponse, id: string, source: ConversationSource): void {
-    if (this.streams.size >= this.maxStreams) {
+  private async serve(req: IncomingMessage, res: ServerResponse, id: string, source: ConversationSource): Promise<void> {
+    if (this.streams.size + this.pending >= this.maxStreams) {
       return sendJson(res, 429, { error: tr('terminais abertos demais (máximo de {0}); feche algum e tente de novo', [this.maxStreams]) });
     }
+    this.pending++;
     let init: TerminalInit;
     try {
-      init = source.load();
+      init = await source.load();
     } catch (err) {
+      this.pending--;
+      if (res.destroyed || res.writableEnded) return;
+      const status = errorStatus(err);
+      if (status) return sendJson(res, status, { error: errMsg(err) });
       log.warnOnce(`terminal-load:${id}:${errMsg(err)}`, tr('Terminal de {0}: não foi possível ler o transcript ({1}).', [id, errMsg(err)]));
       return sendJson(res, 500, { error: tr('não foi possível ler o transcript') });
     }
+    if (req.destroyed || res.destroyed || res.writableEnded) {
+      this.pending--;
+      return;
+    }
+    this.pending--;
     req.socket.setTimeout(0);
     req.socket.setNoDelay(true);
     res.writeHead(200, {
@@ -266,10 +319,10 @@ export class TerminalStreams {
       'X-Accel-Buffering': 'no',
     });
     res.write('retry: 2000\n\n');
-    const s: Stream = { res, timer: null };
+    const s: Stream = { res, timer: null, busy: false };
     this.streams.add(s);
     this.write(s, frame('init', init));
-    s.timer = setInterval(() => this.pump(s, source, id), source.intervalMs);
+    s.timer = setInterval(() => void this.pump(s, source, id), source.intervalMs);
     s.timer.unref?.();
     const drop = () => this.drop(s);
     req.on('close', drop);
@@ -287,8 +340,16 @@ export class TerminalStreams {
   private sourceFor(agentId: string): ConversationSource | string {
     const office = this.opts.office;
     if (office.has(agentId)) {
+      // Ferramenta sem transcript em arquivo (OpenCode): a conversa vem de um stream assíncrono.
+      const stream = this.opts.messageStreamFor?.(agentId);
+      if (stream) return new MessageConversation(stream, stream.intervalMs ?? this.pollMs);
       const path = this.opts.transcriptPathOf(agentId);
-      if (!path) return tr('transcript do agente não encontrado');
+      if (!path) {
+        const provider = office.detail(agentId)?.agent.provider;
+        if (provider === 'opencode') return tr('conversa do OpenCode indisponível no momento');
+        if (provider === 'hermes') return tr('terminal do Hermes ainda não está disponível');
+        return tr('transcript do agente não encontrado');
+      }
       const parserFor = this.opts.parserFor;
       const createParser = parserFor ? () => parserFor(agentId) ?? this.createParser() : this.createParser;
       const o = { transcriptPathOf: this.opts.transcriptPathOf, createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
@@ -301,21 +362,25 @@ export class TerminalStreams {
     return tr('agente não encontrado');
   }
 
-  private pump(s: Stream, source: ConversationSource, agentId: string): void {
-    let r: PollResult;
+  private async pump(s: Stream, source: ConversationSource, agentId: string): Promise<void> {
+    if (s.busy) return;
+    s.busy = true;
     try {
-      r = source.poll();
+      const r = await source.poll();
+      if (!this.streams.has(s) || s.res.destroyed || s.res.writableEnded) return;
+      if (r.init) this.write(s, frame('init', r.init));
+      if (r.append?.length) this.write(s, frame('append', r.append));
+      // O agente sumiu (demo desligado ou sessão simulada encerrada): o stream fica aberto só com pings.
+      if (r.stop && s.timer) {
+        clearInterval(s.timer);
+        s.timer = null;
+      }
     } catch (err) {
-      // Ex.: transcript sem permissão de leitura. Tenta de novo no próximo ciclo.
+      // Ex.: transcript sem permissão de leitura, serviço do OpenCode fora do ar. Tenta de novo no próximo ciclo.
+      if (!this.streams.has(s)) return;
       log.warnOnce(`terminal:${agentId}:${errMsg(err)}`, tr('Terminal de {0}: {1}', [agentId, errMsg(err)]));
-      return;
-    }
-    if (r.init) this.write(s, frame('init', r.init));
-    if (r.append?.length) this.write(s, frame('append', r.append));
-    // O agente sumiu (demo desligado ou sessão simulada encerrada): o stream fica aberto só com pings.
-    if (r.stop && s.timer) {
-      clearInterval(s.timer);
-      s.timer = null;
+    } finally {
+      s.busy = false;
     }
   }
 

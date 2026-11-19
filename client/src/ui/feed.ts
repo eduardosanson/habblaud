@@ -2,6 +2,7 @@
 import { partsKey } from '../../../shared/appearance';
 import type { AgentInfo, FeedItem } from '../../../shared/types';
 import { createAvatar, createAvatarPlaceholder, updateAvatar } from './avatar';
+import { effectiveHiddenAccounts } from './account-filter';
 import type { UiComponent, UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setText, setTitle } from './dom';
 import { formatClock } from './format';
@@ -17,6 +18,8 @@ type AgentMeta = Pick<AgentInfo, 'seed' | 'look' | 'kind' | 'account' | 'parts'>
 
 export class FeedPanel implements UiComponent {
   readonly el: HTMLElement;
+  /** Contas ocultas no filtro atual (inclui o grupo/perfil do Hermes). */
+  private hidden = new Set<string>();
   private list: HTMLElement;
   private rows: KeyedList<FeedItem>;
   private items: FeedItem[] = [];
@@ -103,12 +106,13 @@ export class FeedPanel implements UiComponent {
     this.pruneMeta();
 
     // Filtro por conta da barra lateral: também vale para o feed.
-    const hidden = this.ctx.prefs.hiddenAccounts;
-    const filtering = hidden.length > 0;
+    const accounts = this.ctx.store.snapshot?.accounts ?? [];
+    this.hidden = effectiveHiddenAccounts(accounts, this.ctx.prefs);
+    const filtering = this.hidden.size > 0;
     const visible = filtering ? this.items.filter((f) => this.visible(f)) : this.items;
     const pending = filtering ? this.pending.filter((f) => this.visible(f)) : this.pending;
     let newCount = 0;
-    for (const [account, count] of this.pendingCounts) if (!account || !hidden.includes(account)) newCount += count;
+    for (const [account, count] of this.pendingCounts) if (!account || !this.hidden.has(account)) newCount += count;
     setHidden(this.newPill, !(paused && newCount > 0 && open));
     if (newCount) setText(this.newPill, newCount === 1 ? tr('1 nova') : tr('{0} novas', [Math.min(newCount, 99)]));
     // Escritório vazio: o cartão central já explica; o feed só mostra o que houver de antes.
@@ -119,7 +123,9 @@ export class FeedPanel implements UiComponent {
     );
     setHidden(this.filterNote, !filtering);
     if (filtering) {
-      const names = hidden.map((id) => this.ctx.account(id)?.name ?? id);
+      const hermesIds = new Set(accounts.filter((a) => a.provider === 'hermes').map((a) => a.id));
+      const names = [...this.hidden].filter((id) => !hermesIds.has(id)).map((id) => this.ctx.account(id)?.name ?? id);
+      if ([...this.hidden].some((id) => hermesIds.has(id))) names.push('Hermes');
       setText(this.filterNote, 'filtrado');
       setTitle(this.filterNote, tr('Sem {0} (filtro da barra lateral)', [names.join(', ')]));
     }
@@ -143,7 +149,7 @@ export class FeedPanel implements UiComponent {
 
   private visible(f: FeedItem): boolean {
     const acc = this.accountOf(f);
-    return !acc || !this.ctx.prefs.hiddenAccounts.includes(acc);
+    return !acc || !this.hidden.has(acc);
   }
 
   private appendPending(fresh: FeedItem[]): void {

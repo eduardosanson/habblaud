@@ -1,6 +1,7 @@
 // Caixa de mensagem: manda um texto ao agente principal pelo Habblaud (POST /api/messages) e o plugin
 // habblaud-mensagens o entrega à sessão como se você o tivesse digitado (no Codex, `codex queue` a põe na fila da
-// sessão, que a usa quando fica ociosa). Fica na gaveta do agente e no rodapé do
+// sessão, que a usa quando fica ociosa; no OpenCode, o servidor chama POST /api/session/{id}/prompt e o prompt entra
+// na fila da sessão). Fica na gaveta do agente e no rodapé do
 // terminal (só a sessão ao vivo). Enter manda, Shift+Enter quebra a linha; a linha de situação acompanha a entrega
 // (GET /api/messages/:id) até ela se resolver. As teclas digitadas aqui não disparam os atalhos globais. O rascunho de
 // cada agente fica guardado (só na memória) ao trocar de agente. O microfone (ui/dictation.ts, Whisper local no Mac)
@@ -132,7 +133,7 @@ export class MessageComposer {
     this.mode = mode;
     const ready = mode.kind === 'ready';
     const term = this.variant === 'terminal';
-    this.provider = agent?.provider === 'codex' ? 'codex' : 'claude';
+    this.provider = agent?.provider ?? 'claude';
 
     // Troca de agente (ou a caixa passou a valer/deixou de valer): o conteúdo vem do rascunho guardado.
     const shown = `${key}|${ready}`;

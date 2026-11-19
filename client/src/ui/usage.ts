@@ -8,11 +8,12 @@
 // a idade ("há 12 min") fica sempre à mostra. Sem cota nem créditos ("sem cota") nunca vira 0%. Não há o que
 // instalar para o uso: "Como funciona" abre a ajuda na seção do Codex. Sem Opus/Sonnet nem e-mail (só o plano).
 import type { AccountInfo } from '../../../shared/types';
+import { filterAccounts, HERMES_GROUP } from './account-filter';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex } from './provider';
+import { isCodex, isHermes, isOpenCode } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
@@ -21,6 +22,7 @@ export const SOURCE_LABEL: Record<NonNullable<AccountInfo['usage']>['source'], s
   cache: tr('cache do /usage do Claude Code'),
   statusline: tr('ao vivo (statusline do Claude Code)'),
   codex: tr('arquivos do Codex'),
+  opencode: tr('limites do OpenCode'),
 };
 
 /** Origem para mostrar: o arquivo ao vivo pode ter sido gravado pelo mod do Habblaud ou pelo tap. */
@@ -167,17 +169,19 @@ export function cardState(a: Pick<AccountInfo, 'usage' | 'usageStatus'>): CardSt
   return a.usageStatus === 'ok' ? 'ok' : 'stale';
 }
 
-/** A idade dos números fica sempre à mostra? (Codex: só se renovam enquanto alguma sessão roda.) */
+/** A idade dos números fica sempre à mostra? (Codex/OpenCode: os números podem não se renovar sozinhos.) */
 export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>): boolean {
   if (!a.usage) return false;
   const state = cardState(a);
-  return state === 'stale' || (isCodex(a) && state !== 'empty');
+  return state === 'stale' || ((isCodex(a) || isOpenCode(a)) && state !== 'empty');
 }
 
-/** Linha embaixo do nome: e-mail; no Codex (sem e-mail), o plano; nas outras, a pasta. */
-export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'>): string {
+/** Linha embaixo do nome: e-mail; no Codex/OpenCode (sem e-mail), o plano; nas outras, a pasta (o grupo Hermes não tem). */
+export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'> & { id?: string }): string {
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
+  if (isOpenCode(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'OpenCode';
+  if (isHermes(a) && a.id === HERMES_GROUP) return '';
   return a.configDir;
 }
 
@@ -185,7 +189,7 @@ export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir
 export function usageMessage(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>): [string, string] {
   const state = cardState(a);
   if (state === 'noquota') return [tr('sem cota'), tr('sem cota')];
-  if (isCodex(a)) return [tr('sem dados ainda'), tr('sem dados')];
+  if (isCodex(a) || isOpenCode(a) || isHermes(a)) return [tr('sem dados ainda'), tr('sem dados')];
   return [tr('sem dados de uso'), tr('sem dados')];
 }
 
@@ -199,6 +203,21 @@ export function codexUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'p
   if (state === 'noquota')
     return tr('Na última leitura ({0}), a conta estava sem cota nem créditos para usar (ex.: os créditos do workspace acabaram). Não é 0%: o Codex não informou as janelas. Os números voltam com a próxima sessão.', [age]);
   return tr('O Codex só grava o uso enquanto alguma sessão roda: estes números são da última leitura ({0}).', [age]);
+}
+
+/** Explicação do cartão de uma conta do OpenCode (dica); '' nas outras. */
+export function openCodeUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>, now: number): string {
+  if (!isOpenCode(a)) return '';
+  const state = cardState(a);
+  if (state === 'empty') return tr('Não há o que instalar: o OpenCode informa os limites do plano no próprio serviço local.');
+  const age = a.usage ? relativeTime(a.usage.fetchedAt, now) : '';
+  return tr('O OpenCode informa os limites do plano aberto (5 h e semana): estes números são da última leitura ({0}).', [age]);
+}
+
+/** Explicação do cartão de uma conta do Hermes (dica); '' nas outras. O Hermes não informa limites de plano. */
+export function hermesUsageNote(a: Pick<AccountInfo, 'provider'>): string {
+  if (!isHermes(a)) return '';
+  return tr('O Hermes não informa limites de plano: os tokens de cada sessão aparecem no agente.');
 }
 
 export class UsageCards {
@@ -219,12 +238,14 @@ export class UsageCards {
 
   render(): void {
     const accounts = this.ctx.store.snapshot?.accounts ?? [];
-    this.list.sync(accounts);
-    this.el.classList.toggle('is-empty', accounts.length === 0);
-    setStyleVar(this.el, '--count', String(accounts.length));
+    // O topo mostra uma conta por ferramenta; os perfis do Hermes viram um cartão só.
+    const shown = filterAccounts(accounts);
+    this.list.sync(shown);
+    this.el.classList.toggle('is-empty', shown.length === 0);
+    setStyleVar(this.el, '--count', String(shown.length));
     // Medir força o layout da página, e o render roda a cada quadro no replay: só quando as contas mudam (a largura da
     // janela fica com o ResizeObserver do construtor).
-    const key = accounts.map((a) => a.id).join('|');
+    const key = shown.map((a) => a.id).join('|');
     if (key !== this.fitKey) {
       this.fitKey = key;
       this.fit();
@@ -337,12 +358,15 @@ export class UsageCards {
     const r = this.refs.get(card)!;
     const now = this.ctx.now();
     const codex = isCodex(a);
+    const opencode = isOpenCode(a);
+    const hermes = isHermes(a);
+    const toolCard = codex || opencode || hermes;
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
-    updateProviderTag(r.prov, codex ? 'codex' : 'claude', a.name);
+    updateProviderTag(r.prov, a.provider ?? 'claude', a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : '']));
+    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : '']));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -371,7 +395,9 @@ export class UsageCards {
         r.state,
         codex
           ? tr('Atualizado {0}: o Codex só grava o uso enquanto alguma sessão roda.', [age])
-          : tr('Números de {0}: podem não refletir o uso atual.', [age]),
+          : opencode
+            ? tr('Atualizado {0}: o OpenCode informa os limites do plano aberto.', [age])
+            : tr('Números de {0}: podem não refletir o uso atual.', [age]),
       );
     }
 
@@ -381,46 +407,57 @@ export class UsageCards {
     setText(r.msgLong, msgLong);
     setText(r.msgShort, msgShort);
     setHidden(r.msg, state !== 'empty' && state !== 'noquota');
-    setHidden(r.how, state === 'noquota');
+    setHidden(r.how, state === 'noquota' || hermes);
     r.msg.classList.toggle('is-noquota', state === 'noquota');
-    setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : '');
-    setText(r.howLong, codex ? tr('Como funciona') : tr('Como ativar'));
-    setText(r.howShort, codex ? tr('Saber') : tr('Ativar'));
+    setTitle(r.msg, state === 'noquota' ? (codex ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a, now) : '') : '');
+    setText(r.howLong, toolCard ? tr('Como funciona') : tr('Como ativar'));
+    setText(r.howShort, toolCard ? tr('Saber') : tr('Ativar'));
     r.how.dataset.help = codex ? 'codex' : 'usage';
-    setTitle(r.how, codex ? tr('Como o uso do Codex chega ao Habblaud (abre a ajuda em “Codex”)') : tr('Como mostrar o uso desta conta (abre a ajuda em “Contas e uso”)'));
+    setTitle(
+      r.how,
+      codex
+        ? tr('Como o uso do Codex chega ao Habblaud (abre a ajuda em “Codex”)')
+        : opencode
+          ? tr('Como o uso do OpenCode chega ao Habblaud (abre a ajuda em “Contas e uso”)')
+          : tr('Como mostrar o uso desta conta (abre a ajuda em “Contas e uso”)'),
+    );
     this.updateTip(r, a, state, five, week, now);
   }
 
   private updateTip(r: CardRefs, a: AccountInfo, state: CardState, five: UsageWindowView | null, week: UsageWindowView | null, now: number): void {
     const codex = isCodex(a);
-    setText(r.tipTitle, `${a.name}${codex && !/codex/i.test(a.name) ? ' · Codex' : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
+    const opencode = isOpenCode(a);
+    const hermes = isHermes(a);
+    const toolCard = codex || opencode || hermes;
+    const tool = codex ? 'Codex' : opencode ? 'OpenCode' : hermes ? 'Hermes' : '';
+    setText(r.tipTitle, `${a.name}${tool && !new RegExp(tool, 'i').test(a.name) ? ` · ${tool}` : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
     const rows: [string, string][] = [];
-    if (codex) rows.push([tr('Ferramenta'), 'Codex']);
+    if (tool) rows.push([tr('Ferramenta'), tool]);
     if (a.email) rows.push(['E-mail', a.email]);
     if (a.organization) rows.push([tr('Organização'), a.organization]);
     if (a.plan) rows.push([tr('Plano'), a.plan]);
-    rows.push([tr('Pasta'), a.configDir]);
+    if (a.id !== HERMES_GROUP) rows.push([tr('Pasta'), a.configDir]);
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
     if (u && (u.fiveHour || u.sevenDay)) {
       rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
       rows.push([tr('Semana'), week?.summary ?? '—']);
-      // Opus e Sonnet são janelas do Claude: no Codex não existem.
-      const opus = codex ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
-      const sonnet = codex ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
+      // Opus e Sonnet são janelas do Claude: no Codex/OpenCode/Hermes não existem.
+      const opus = toolCard ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
+      const sonnet = toolCard ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
       if (opus) rows.push([tr('Opus (semana)'), opus.summary]);
       if (sonnet) rows.push([tr('Sonnet (semana)'), sonnet.summary]);
     }
     if (u && state === 'noquota') rows.push([tr('Cota'), tr('sem cota nem créditos agora')]);
-    if (u && (state !== 'empty' || codex)) {
+    if (u && (state !== 'empty' || toolCard)) {
       rows.push([tr('Origem'), sourceLabel(u)]);
       rows.push([tr('Atualizado'), relativeTime(u.fetchedAt, now)]);
     }
     syncRows(r.tipRows, rows);
 
-    // Codex: a explicação dele, sem o passo a passo do Claude Code (não há o que instalar para o uso).
-    if (codex) {
-      const note = codexUsageNote(a, now);
+    // Codex/OpenCode/Hermes: a explicação da ferramenta, sem o passo a passo do Claude Code.
+    if (toolCard) {
+      const note = codex ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a, now) : hermesUsageNote(a);
       setText(r.tipNote, note);
       setHidden(r.tipNote, !note);
       setHidden(r.tipSetup, true);

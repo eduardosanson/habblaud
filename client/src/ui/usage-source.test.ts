@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
-import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import { HERMES_GROUP } from './account-filter';
+import { cardState, codexUsageNote, hermesUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -14,6 +15,7 @@ describe('sourceLabel', () => {
     expect(sourceLabel({ source: 'statusline', fetchedAt: 0 })).toBe('ao vivo (statusline do Claude Code)');
     expect(sourceLabel({ source: 'cache', fetchedAt: 0 })).toBe('cache do /usage do Claude Code');
     expect(sourceLabel({ source: 'codex', fetchedAt: 0 })).toBe('arquivos do Codex');
+    expect(sourceLabel({ source: 'opencode', fetchedAt: 0 })).toBe('limites do OpenCode');
   });
 });
 
@@ -48,5 +50,39 @@ describe('cartão de uso de uma conta do Codex', () => {
     expect(usageSubtitle({ email: 'a@b.c', configDir: '~/.claude' })).toBe('a@b.c');
     expect(usageSubtitle({ configDir: '~/.claude' })).toBe('~/.claude');
     expect(codexUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+});
+
+describe('cartão de uso de uma conta do OpenCode', () => {
+  const opencode = (over: Partial<Acc> = {}): Acc => ({ provider: 'opencode', usageStatus: 'ok', configDir: '~/.local/state/opencode', ...over });
+
+  it('sem números, não há o que instalar; a idade fica à mostra', () => {
+    expect(usageMessage(opencode())).toEqual(['sem dados ainda', 'sem dados']);
+    expect(showsUsageAge(opencode())).toBe(false);
+    expect(showsUsageAge(opencode({ usage: { source: 'opencode', fiveHour: win, fetchedAt: 0 } }))).toBe(true);
+    expect(openCodeUsageNote(opencode(), 0)).toBe('Não há o que instalar: o OpenCode informa os limites do plano no próprio serviço local.');
+    expect(usageSubtitle(opencode())).toBe('OpenCode');
+    expect(usageSubtitle(opencode({ plan: 'Go' }))).toBe('plano Go');
+    expect(openCodeUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+
+  it('a origem e a explicação citam o OpenCode', () => {
+    const usage = { source: 'opencode' as const, fiveHour: win, fetchedAt: 0 };
+    expect(openCodeUsageNote(opencode({ usage }), 12 * MIN)).toBe(
+      'O OpenCode informa os limites do plano aberto (5 h e semana): estes números são da última leitura (há 12 min).',
+    );
+  });
+});
+
+describe('cartão de uso de uma conta do Hermes', () => {
+  const hermes = (over: Partial<Acc> = {}): Acc => ({ provider: 'hermes', usageStatus: 'ok', configDir: '~/.hermes/profiles/developer', ...over });
+
+  it('sem limites de plano: sem números, com a explicação de que os tokens ficam no agente', () => {
+    expect(usageMessage(hermes())).toEqual(['sem dados ainda', 'sem dados']);
+    expect(hermesUsageNote(hermes())).toBe('O Hermes não informa limites de plano: os tokens de cada sessão aparecem no agente.');
+    expect(hermesUsageNote({})).toBe('');
+    expect(usageSubtitle(hermes())).toBe('~/.hermes/profiles/developer');
+    // O cartão do grupo Hermes não repete a pasta (o topo mostra um cartão só).
+    expect(usageSubtitle({ ...hermes(), id: HERMES_GROUP })).toBe('');
   });
 });

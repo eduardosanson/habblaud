@@ -9,21 +9,24 @@ function session(p: Partial<RecentSession> & Pick<RecentSession, 'sessionId' | '
   return { account: '.claude', projectDir: '-p', size: 1_000, open: false, ...p };
 }
 
-describe('sessões do Codex no histórico', () => {
-  it('parseRecentSessions guarda o provider só quando é o Codex; a busca acha "codex"', () => {
+describe('sessões de outras ferramentas no histórico', () => {
+  it('parseRecentSessions guarda Codex/OpenCode; a busca acha o nome da ferramenta', () => {
     const list = parseRecentSessions({
       sessions: [
         { account: '.codex', provider: 'codex', sessionId: 'x', projectDir: '/p', lastAt: 2, size: 1, open: false },
+        { account: 'opencode', provider: 'opencode', sessionId: 'o', projectDir: '/p', lastAt: 3, size: 1, open: false },
         { account: '.claude', provider: 'claude', sessionId: 'c', projectDir: '-p', lastAt: 1, size: 1, open: false },
         { account: '.claude', provider: 'outro', sessionId: 'd', projectDir: '-p', lastAt: 0, size: 1, open: false },
       ],
     });
     expect(list.map((s) => [s.sessionId, s.provider])).toEqual([
+      ['o', 'opencode'],
       ['x', 'codex'],
       ['c', undefined],
       ['d', undefined],
     ]);
     expect(filterSessions(list, 'codex').map((s) => s.sessionId)).toEqual(['x']);
+    expect(filterSessions(list, 'opencode').map((s) => s.sessionId)).toEqual(['o']);
   });
 });
 

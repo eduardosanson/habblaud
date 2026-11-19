@@ -3,6 +3,7 @@
 //   npm run dev    -> tsx server/index.ts --dev (Vite em middleware mode, HMR no mesmo servidor)
 //   npm start      -> node dist/server/index.js (serve dist/client)
 import http from 'node:http';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { codexDirsRefused, isDefaultDir } from './accounts/detect';
 import { AccountsService } from './accounts/service';
@@ -37,6 +38,10 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { OpenCodeSource } from './sources/opencode/source';
+import { OpenCodeHistory } from './sources/opencode/history';
+import { openCodeServiceFile } from './sources/opencode/client';
+import { HermesSource } from './sources/hermes/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -138,6 +143,28 @@ const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
 if (codex) agents.add(codex);
+// OpenCode: o serviço local se registra em service.json. Sem arquivo, a fonte só entra com HABBLAUD_OPENCODE=1 (mostra
+// o erro) ou com HABBLAUD_OPENCODE_URL; assim quem não usa OpenCode não ganha uma conta vazia no escritório.
+const openCodeFile = config.opencodeService ?? openCodeServiceFile(process.env, config.home);
+const openCodeWanted = config.opencode && (!!config.opencodeUrl || isTruthy(process.env.HABBLAUD_OPENCODE) || existsSync(openCodeFile));
+const opencode = openCodeWanted
+  ? new OpenCodeSource({
+      accounts,
+      office,
+      env: process.env,
+      home: config.home,
+      serviceFile: openCodeFile,
+      recentMs: config.opencodeRecentMs,
+      ...(config.opencodeUrl && config.opencodePassword
+        ? { endpoint: { url: config.opencodeUrl, password: config.opencodePassword } }
+        : {}),
+    })
+  : undefined;
+if (opencode) agents.add(opencode);
+// Hermes: o plugin Python (mod/habblaud-hermes) manda eventos para /api/hermes/events. Sem eventos, a fonte não
+// aparece no snapshot; ela só existe para receber o plugin e some sozinha quando ninguém usa.
+const hermes = new HermesSource({ accounts, office });
+agents.add(hermes);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
@@ -187,15 +214,29 @@ if (worldUplink && worldSocial) {
   worldUplink.attachOwner(worldSocial);
 }
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
-// Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
+// Cada agente com o parser da ferramenta dele (o do Claude Code por padrão) ou, no OpenCode, com o stream da API.
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({
+      office,
+      transcriptPathOf: (id) => agents.transcriptPathOf(id),
+      parserFor: (id) => agents.parserFor(id),
+      messageStreamFor: (id) => agents.messageStreamFor(id),
+    })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const history = config.terminal
   ? new HistorySet([new SessionHistory({ accounts: () => accounts.entries(), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) })])
   : undefined;
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
+if (history && opencode) {
+  history.add(
+    new OpenCodeHistory({
+      accounts: () => accounts.entriesOf('opencode'),
+      client: () => opencode.api(),
+      openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid),
+    }),
+  );
+}
 // Entregas: o fim de cada pedido, lido dos transcripts do histórico (mesma trava do terminal). Os arquivos entregues
 // são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.
 const deliveries = history
@@ -274,6 +315,12 @@ const messages = config.messages
         run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
         homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
       },
+      opencode: opencode
+        ? {
+            prompt: (sessionId, text) => opencode.promptSession(sessionId, text),
+            available: () => !!opencode.api(),
+          }
+        : undefined,
     })
   : undefined;
 late.messages = messages;
@@ -372,6 +419,7 @@ const api = createApiHandler({
     return recentFolders(history ? await history.list().catch(() => []) : [], rooms);
   },
   codexLive,
+  hermes,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,

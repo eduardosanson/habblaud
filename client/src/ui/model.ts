@@ -322,8 +322,9 @@ export interface RoomGroup {
 
 function accountText(account: AccountInfo | undefined): string {
   if (!account) return '';
-  // A ferramenta entra na busca: "codex" acha os agentes do Codex.
-  return [account.short, account.name, account.email ?? '', account.id, account.provider === 'codex' ? 'Codex' : ''].join(' ');
+  // A ferramenta entra na busca: "codex" acha os agentes do Codex; "opencode", os do OpenCode; "hermes", os do Hermes.
+  const provider = account.provider === 'codex' ? 'Codex' : account.provider === 'opencode' ? 'OpenCode' : account.provider === 'hermes' ? 'Hermes' : '';
+  return [account.short, account.name, account.email ?? '', account.id, provider].join(' ');
 }
 
 /** Verdadeiro se o agente bate com a busca textual (sem acentos, sem diferenciar maiúsculas). */

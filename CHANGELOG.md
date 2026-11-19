@@ -10,6 +10,37 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- **OpenCode no escritório (leitura ao vivo).** O Habblaud agora lê o serviço local do OpenCode V2 pela API HTTP e
+  mostra no escritório as sessões abertas, o que cada uma está fazendo, subagentes, shells e o uso do plano. Cada
+  sessão vira um personagem na sala do projeto e o agente do OpenCode (`build`, `plan`...) vira o papel. A fonte lê o
+  `service.json` sozinha, não precisa de plugin nem de hook, e o uso aparece com a origem “limites do OpenCode”.
+  Responder permissões e mandar mensagens ainda ficam no OpenCode; agentes do OpenCode também não entram no Habblaud
+  World até o protocolo de lá aceitar a ferramenta.
+- **Terminal e histórico do OpenCode.** A conversa de uma sessão do OpenCode agora abre no terminal do Habblaud, com
+  prompts, respostas, raciocínio, ferramentas e resultados. O terminal ao vivo funciona também para os subagentes, e
+  o histórico lista as sessões dos últimos sete dias com o selo “OpenCode”. A conversa vem das rotas de
+  sessão/mensagens do serviço local, sem plugin, sem ler o banco dele e sem tocar em credenciais.
+- **Mensagens para o OpenCode.** A caixa de mensagem do agente agora manda o prompt direto ao serviço local do
+  OpenCode, que o coloca na fila da sessão. É uma mensagem por vez, na ordem, e a linha de situação mostra a fila e a
+  entrega como no Codex. Para o Claude Code, a dica agora lembra que o plugin de mensagens carrega ao abrir a sessão:
+  instalar com a sessão já aberta não basta.
+- **Hermes no escritório.** Um plugin Python observa os hooks do Hermes e mostra no Habblaud as sessões, o que cada
+  uma está fazendo, ferramentas, subagentes, tokens e as aprovações. Cada perfil do Hermes vira uma conta com o nome
+  “Hermes” + as iniciais do perfil (ex.: “Hermes DO”), e a sala é o diretório de trabalho do perfil.
+- **Terminal, mensagens e aprovações do Hermes.** A conversa da sessão aberta aparece no terminal do Habblaud
+  (prompts, respostas, ferramentas e resultados, inclusive no subagente). A caixa de mensagem injeta o texto na
+  sessão pelo `ctx.inject_message` do Hermes, com fila e confirmação de entrega. E os pedidos de aprovação viram
+  cartões no escritório: aprovar ou recusar responde ao Hermes, e “Responder no terminal” devolve o pedido para lá.
+  O instalador configura as chaves necessárias em cada perfil e o `uninstall` limpa. Um heartbeat de 30 s mantém a
+  sessão viva no escritório e a traz de volta sozinha depois de reiniciar o Habblaud; a mesma sessão vista em mais
+  de um perfil do gateway não duplica o agente.
+- **Filtro do Hermes por perfil.** No topo da lista e nos cartões de uso, o Hermes aparece **uma vez só** (“Hermes”), em
+  vez de um cartão por perfil. Um seletor logo abaixo abre uma lista com checkboxes e permite escolher **um ou mais
+  perfis**; o filtro vale para a lista, o feed e os avisos. As contas do Claude Code, Codex e OpenCode continuam com um
+  chip cada.
+
 ## [1.0.3] - 2026-10-16
 
 ### Corrigido

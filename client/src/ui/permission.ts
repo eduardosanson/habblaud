@@ -46,6 +46,8 @@ export function expiryText(expiresAt: number, now: number, seconds = false): str
 
 /** Aviso do cartão de um pedido do Codex. */
 export const CODEX_PERMISSION_NOTE = tr('No Codex, a aprovação só aparece no terminal depois que você responder aqui ou o prazo acabar.');
+/** Aviso do cartão de um pedido do Hermes (aprovado pelo transport do plugin). */
+export const HERMES_PERMISSION_NOTE = tr('A aprovação vale para esta execução. Se você escolher “Responder no terminal”, o Hermes mostra o pedido no terminal.');
 
 /** O que o cartão oferece para um pedido (muda com a ferramenta). */
 export interface PermissionOptions {
@@ -63,6 +65,7 @@ export interface PermissionOptions {
 
 export function permissionOptions(p: Pick<PermissionRequestInfo, 'provider' | 'suggestions'>, agent: Pick<AgentInfo, 'kind' | 'background'>): PermissionOptions {
   if (p.provider === 'codex') return { always: false, interrupt: false, reasonRequired: true, seconds: true, note: CODEX_PERMISSION_NOTE };
+  if (p.provider === 'hermes') return { always: false, interrupt: false, reasonRequired: false, seconds: false, note: HERMES_PERMISSION_NOTE };
   // Subagente em segundo plano: o Claude Code só mostra o diálogo depois que o hook responde.
   const blocking = agent.kind === 'sub' && !!agent.background;
   return {

@@ -2,3 +2,6 @@
 # (~800 KB, mudam a cada versão do Claude Code) e o tsconfig.json que estende os tipos gerados.
 */.claude-plugin/types/
 */tsconfig.json
+# Python (plugin do Hermes e testes).
+__pycache__/
+*.pyc

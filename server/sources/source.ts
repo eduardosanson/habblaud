@@ -3,7 +3,8 @@
 // Cada fonte observa as sessões ABERTAS da sua ferramenta e alimenta o Office (addMain, addActivity...). O
 // servidor liga todas por um SourceSet: o snapshot (meta.sources), o /api/health, o terminal e o caminho do
 // transcript de um agente passam por ele, sem saber de qual ferramenta o agente vem. Hoje só existe a do Claude
-// Code (sources/watcher.ts, ClaudeWatcher); a do Codex entra pelo mesmo contrato.
+// Code (sources/watcher.ts, ClaudeWatcher); a do Codex entra pelo mesmo contrato. A do OpenCode não grava transcript
+// em arquivo: ela oferece um MessageStream (sources/stream.ts), e o terminal o prefere ao caminho de arquivo.
 //
 // Histórico do terminal (sessões recentes, abertas ou encerradas): um HistoryProvider por ferramenta, juntos num
 // HistorySet que atende as rotas /api/sessions/*. O do Claude Code é o SessionHistory (sources/history.ts).
@@ -15,6 +16,7 @@
 import type { Provider, RecentSession, SourceInfo } from '../../shared/types';
 import { errMsg, log } from '../log';
 import { HISTORY_LIMIT } from './history';
+import type { MessageStream } from './stream';
 import { createTerminalParser, type TerminalParser } from './terminal';
 import { tr } from '../../shared/i18n';
 
@@ -36,6 +38,11 @@ export interface AgentSource {
    * Ausente, ou undefined, = o do Claude Code (createTerminalParser).
    */
   terminalParser?(agentId: string): TerminalParser | undefined;
+  /**
+   * Conversa ao vivo de um agente cuja ferramenta não grava transcript em arquivo (OpenCode): um stream NOVO a
+   * cada chamada, com estado próprio. Ausente = o terminal lê o transcript de sempre (Claude Code/Codex).
+   */
+  messageStream?(agentId: string): MessageStream | undefined;
 }
 
 /** Todas as fontes de agentes ligadas, vistas como uma só. */
@@ -110,16 +117,36 @@ export class SourceSet {
     const owner = this.list.find((s) => s.transcriptPathOf(agentId) !== undefined);
     return owner?.terminalParser?.(agentId) ?? createTerminalParser();
   }
+
+  /**
+   * Conversa ao vivo de um agente (OpenCode): o stream da fonte que o conhece, um novo a cada chamada. Sem fonte
+   * com stream, undefined e o terminal segue pelo transcript em arquivo.
+   */
+  messageStreamFor(agentId: string): MessageStream | undefined {
+    for (const s of this.list) {
+      const stream = s.messageStream?.(agentId);
+      if (stream) return stream;
+    }
+    return undefined;
+  }
 }
 
 // ------------------------------------------------------------------ histórico do terminal
 
 /** Sessão do histórico achada: o arquivo da conversa e o parser do terminal para ele. */
-export interface HistorySession {
+export interface HistoryFileSession {
   path: string;
   /** Parser NOVO a cada chamada (o terminal cria outro quando o arquivo é truncado ou substituído). */
   createParser: () => TerminalParser;
 }
+
+/** Sessão do histórico sem arquivo: a conversa vem de um stream (OpenCode por HTTP). */
+export interface HistoryStreamSession {
+  /** Stream NOVO a cada chamada (cada conexão de terminal tem o estado dela). */
+  stream: () => MessageStream;
+}
+
+export type HistorySession = HistoryFileSession | HistoryStreamSession;
 
 /** Resultado de resolve(): a sessão ou o erro HTTP. */
 export type HistoryResolveResult = HistorySession | { status: 400 | 404; error: string };

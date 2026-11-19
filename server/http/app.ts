@@ -4,9 +4,11 @@ import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '.
 import type { AccessInfo, AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
 import { handleCodexEvent } from '../codex/http';
+import { handleHermesEvent, handleHermesSessions } from '../hermes/http';
 import type { DayStatsService } from '../history/daystats';
 import type { Office } from '../model/office';
 import type { CodexLive } from '../sources/codex/live';
+import type { HermesSource } from '../sources/hermes/source';
 import type { SessionLookup } from '../sources/source';
 import { isJsonContentType, isLoopbackHost } from './guard';
 import type { RemoteFeature } from './remote';
@@ -63,6 +65,8 @@ export interface ApiDeps {
    * não dependem da trava do terminal).
    */
   codexLive?: CodexLive;
+  /** Fonte do Hermes: recebe os eventos do plugin (POST /api/hermes/events). Sem ela a rota responde {ok: false}. */
+  hermes?: HermesSource;
   /** Novo agente pelo escritório (/api/spawn e, para o auxiliar do host, /api/host/spawn/*; server/spawn/spawn.ts). */
   spawn?: SpawnService;
   /** Pastas sugeridas no "Novo agente" (GET /api/spawn/folders; spawn/folders.ts): projetos recentes. */
@@ -376,6 +380,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           pty: !!deps.pty && !remote,
           messages: !!deps.messages && (!remote || trusted(req, 'messages')),
           codexEvents: !!deps.codexLive,
+          hermesEvents: !!deps.hermes,
           updates: updatesSummary(deps.updates?.status()),
           sources: deps.sources(),
           accounts: accounts.allEntries().map((a) =>
@@ -487,6 +492,21 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
         sendJson(res, 403, { error: denied(req, tr('eventos do Codex só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
       } else handleCodexEvent(req, res, { live: deps.codexLive, entries: () => accounts.entriesOf('codex') }).catch((err) => fail(res, err));
+      return true;
+    }
+    if (path === '/api/hermes/sessions') {
+      if (method !== 'GET') methodNotAllowed(res, 'GET');
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('eventos do Hermes só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      } else handleHermesSessions(req, res, { source: deps.hermes });
+      return true;
+    }
+    if (path === '/api/hermes/events') {
+      // Eventos do plugin do Hermes: só observam, mas só valem vindos do próprio computador (mesma trava do Codex).
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('eventos do Hermes só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      } else handleHermesEvent(req, res, { source: deps.hermes }).catch((err) => fail(res, err));
       return true;
     }
     if (path === '/api/spawn' || path.startsWith('/api/spawn/')) {

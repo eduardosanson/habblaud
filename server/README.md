@@ -89,8 +89,9 @@ festa) ou 10 min. Push só avisa. O mesmo CI visto de novo em 2 min não repete 
 | `POST /api/permissions/:id/decision` | (página) `PermissionDecision`: `{behavior: 'allow' \| 'deny' \| 'terminal' \| 'answer', message?, interrupt?, suggestion?, answers?}` |
 | `POST /api/messages` | (página) `{agentId, text}`: manda uma mensagem a um agente principal; `201 OutboxMessage`; só com bind local (ver abaixo) |
 | `GET /api/messages/:id` | (página) situação da mensagem (`OutboxMessage`: `queued` \| `sent` \| `delivered` \| `failed`) |
-| `POST /api/mod/inbox` | (plugin `habblaud-mensagens`) `{session, account?}`: marca a presença da sessão e entrega `{messages: InboxMessage[]}` |
-| `POST /api/mod/inbox/ack` | (plugin) `{session, results: [{id, ok, error?}]}`: confirma cada mensagem entregue (ou a falha) |
+| `POST /api/mod/inbox` | (plugin `habblaud-mensagens`/`habblaud-hermes`) `{session, account?, provider?}`: marca a presença da sessão e entrega `{messages: InboxMessage[]}` |
+| `POST /api/mod/inbox/ack` | (plugin) `{session, results: [{id, ok, error?, retry?}]}`: confirma cada mensagem entregue (ou a falha; `retry` devolve à fila) |
+| `GET /api/hermes/sessions` | (plugin `habblaud-hermes`) sessões principais no escritório `{sessions: [{profile, account, session}]}`; só com bind local |
 
 O snapshot (SSE e `GET /api/snapshot`) leva só as últimas 8 atividades de cada agente em `recent`; o histórico
 de até 200 (inclusive o começo de transcripts longos, lido em segundo plano) vem de `GET /api/agents/:id`.
@@ -259,28 +260,36 @@ ou resposta inválidos), 404 (pedido desconhecido, já entregue ou expirado), 40
 
 ## Mensagens pelo escritório
 
-A página manda texto a um agente principal (`POST /api/messages`, pela gaveta do agente ou pelo rodapé do terminal) e
-o plugin `habblaud-mensagens` da sessão o busca (`POST /api/mod/inbox`, a cada 2 s) e o entrega com
-`$.prompt.submit({ text, asUser: true })`: o modelo lê como se você tivesse digitado. Depois confirma
-(`POST /api/mod/inbox/ack`). Detalhes do plugin em [`mod/README.md`](../mod/README.md).
+A página manda texto a um agente principal (`POST /api/messages`, pela gaveta do agente ou pelo rodapé do terminal).
+Cada ferramenta tem o seu caminho:
+
+- **Claude Code:** o plugin `habblaud-mensagens` da sessão busca (`POST /api/mod/inbox`, a cada 2 s) e entrega com
+  `$.prompt.submit({ text, asUser: true })`: o modelo lê como se você tivesse digitado. Depois confirma
+  (`POST /api/mod/inbox/ack`). Detalhes do plugin em [`mod/README.md`](../mod/README.md). O plugin carrega ao abrir a
+  sessão: instalar com ela já aberta exige reabrir (ou reiniciar o processo do Claude Code).
+- **Codex:** `codex queue` (modo Node) ou o auxiliar do host (`npm run codex:bridge` no Docker).
+- **OpenCode:** `POST /api/session/{id}/prompt` com `{text, delivery: 'queue'}`; o serviço local põe o prompt na fila
+  da sessão. Sem plugin, sem anexos e sem credenciais.
 
 `messages/registry.ts` (`MessageRegistry`):
 
 - **presença:** cada pergunta do plugin marca a sessão (o principal com aquele `sessionId`, e a `account` igual se
-  vier); vista há até 10 s, o agente sai no snapshot com `canMessage: true`. O snapshot só muda quando a presença muda;
+  vier); vista há até 10 s, o agente sai no snapshot com `canMessage: true`. No Codex e no OpenCode, `canMessage` vem
+  do entregador disponível (o `codex`/auxiliar ou o cliente do serviço). O snapshot só muda quando a presença muda;
 - **fila:** até 5 mensagens em aberto por agente (429) e 20.000 caracteres por mensagem; o texto vai como foi digitado,
-  nunca aparece nas respostas para a página nem no log, e é descartado quando a mensagem se resolve;
-- **estados:** `queued` → `sent` (o plugin buscou) → `delivered` ou `failed`. `queued` sem ser buscada em 60 s, `sent`
-  sem confirmação em 30 s ou agente que saiu = `failed`, com o motivo. `delivered` = entrou na sessão ou na fila dela
-  (com o agente ocupado, entra quando ele terminar o turno). Resolvidas ficam 10 min para o `GET`;
+  nunca aparece nas respostas para a página nem no log, e é descartado quando a mensagem se resolve. Cada agente
+  recebe uma por vez, na ordem (o Codex e o OpenCode confirmam quando o comando/prompt é aceito);
+- **estados:** `queued` → `sent` → `delivered` ou `failed`. `queued` sem ser buscada em 60 s, `sent` sem confirmação
+  em 30 s ou agente que saiu = `failed`, com o motivo. `delivered` = entrou na sessão ou na fila dela (com o agente
+  ocupado, entra quando ele terminar o turno). Resolvidas ficam 10 min para o `GET`;
 - entregue: atividade ✉️ "Mensagem pelo Habblaud" no agente (o detalhe mascarado e cortado); agentes do demo recebem
   mensagens fictícias, entregues em ~1 s, sem sessão real.
 
 As rotas (`messages/http.ts`) seguem a trava do terminal e mais uma chave: `ServerConfig.messages` = terminal ligado e
 `HABBLAUD_MENSAGENS` não desligado (`0`, `false`, `off`, `no`). Desligado ou `Host` que não é local → 403 em todas.
 Erros de `POST /api/messages`: 400 (corpo inválido, texto vazio ou longo demais), 404 (agente desconhecido), 409 (o
-agente não recebe: subagente, saiu ou sessão sem o plugin conectado) e 429. O estado sai em `meta.messages` do
-snapshot e em `messages` no `/api/health`.
+agente não recebe: subagente, saiu, sessão do Claude Code sem o plugin conectado ou serviço do OpenCode fora do ar) e
+429. O estado sai em `meta.messages` do snapshot e em `messages` no `/api/health`.
 
 Qualquer processo local consegue chamar essas rotas (como as de permissão): ligar as mensagens é aceitar que um
 programa da própria máquina possa digitar nas sessões que têm o plugin.
@@ -354,6 +363,81 @@ do Codex levam `provider: 'codex'` (ausente = Claude Code). Ids: `<conta>:<threa
   do PATH); no Docker, o auxiliar do host (`npm run codex:bridge`) busca em `POST /api/codex/bridge/poll` e confirma em
   `/ack` (mesma trava das mensagens). `canMessage` = há entregador (binário achado, ou auxiliar visto há até 10 s).
   Retorno 0 = entrou na fila da sessão (`delivered`); o Codex consome a fila a cada ~10 s, quando a sessão fica ociosa.
+
+## OpenCode
+
+Fonte de agentes `sources/opencode/` (`AgentSource 'opencode'`): o OpenCode V2 roda um serviço local com API HTTP e
+SSE, então não precisa de plugin, hook nem leitura do SQLite. O serviço se registra em
+`$XDG_STATE_HOME/opencode/service.json` (ou `~/.local/state/opencode/service.json`), com `url` e `password`; a fonte
+usa Basic auth só em memória e nunca põe a senha no snapshot, no log ou na página.
+
+- **Sessões:** `GET /api/session` (lista paginada), `GET /api/session/active` (`running`) e
+  `GET /api/session/:id`; a sala é `location.directory`, o papel é o `agent` do OpenCode (`build`, `plan`...) e
+  sessões com `parentID` viram subagentes.
+- **Ao vivo:** `GET /api/event` (SSE) com execução, ferramentas, texto/raciocínio, shells, compactação, permissões,
+  renomeação, uso e remoção. Eventos são live-only: ao reconectar, a fonte refaz o boot para ressincronizar.
+- **Terminal e histórico:** o agente ao vivo (principal ou subagente) e as sessões dos últimos 7 dias abrem no mesmo
+  terminal SSE do Claude Code/Codex. A conversa sai de `GET /api/session/{id}/message?limit=100&order=desc`, não de
+  arquivo: `OpenCodeMessageStream` (sources/opencode/terminal.ts) traduz mensagens em `TerminalEntry` e o
+  `OpenCodeHistory` (sources/opencode/history.ts) lista as sessões raiz com `provider: 'opencode'`. A costura é
+  `MessageStream` (sources/stream.ts), opcional em `AgentSource`/`HistorySession`; o caminho de transcript em arquivo
+  do Claude Code e do Codex não mudou. Como não há transcript, `RecentSession.size` vai `0` e a UI omite o tamanho.
+- **Mensagens:** a caixa do escritório manda o prompt em `POST /api/session/{id}/prompt` com
+  `{text, delivery: 'queue'}` (sources/opencode/source.ts `promptSession`); o `MessageRegistry` entrega uma por agente,
+  na ordem, e marca `delivered` quando o serviço aceita na fila. Sem plugin e sem anexos nesta fase: vai só o texto.
+- **Presença:** ativa ou vista/atualizada nos últimos `HABBLAUD_OPENCODE_RECENT_MIN` minutos (padrão 120); arquivadas
+  ficam de fora. O OpenCode guarda sessões antigas para sempre, então sem a janela o escritório lotaria.
+- **Uso:** `GET /api/experimental/usage/limits`; `go.rolling` vira 5 h, `go.weekly` vira a semana, com
+  `source: 'opencode'` no cartão da conta.
+- **Configuração:** `HABBLAUD_OPENCODE=0` desliga; `HABBLAUD_OPENCODE=1` força a fonte (mostra o erro se o serviço não
+  estiver no ar); `HABBLAUD_OPENCODE_URL` e `HABBLAUD_OPENCODE_PASSWORD` substituem o `service.json`;
+  `HABBLAUD_OPENCODE_SERVICE` aponta outro arquivo. Sem nada disso, a fonte só entra quando o `service.json` existe.
+- **Fora desta fase:** responder permissões pelo escritório. O agente que pede permissão fica `waiting` (a mão
+  levantada), mas a resposta continua no OpenCode. Entregas também não saem de conversas do OpenCode (o histórico
+  devolve stream, não arquivo). No Docker, o `service.json` e o loopback do host não são acessíveis de dentro do
+  container; use as variáveis acima numa fase seguinte.
+- **Habblaud World:** agentes do OpenCode ficam fora da projeção enquanto o protocolo do World só aceitar Claude
+  Code/Codex; eles nunca são enviados como outra ferramenta.
+
+## Hermes
+
+Fonte de agentes `sources/hermes/` (`AgentSource 'hermes'`): um plugin Python (`mod/habblaud-hermes`) observa os hooks
+do Hermes e manda um JSON por evento para `POST /api/hermes/events`. O plugin também busca a caixa de mensagens e
+responde aprovações pelo escritório.
+
+- **Eventos:** `on_session_open`/`on_session_start`/`on_session_end`/`on_session_finalize`, `pre_llm_call`/
+  `post_llm_call` (busy/idle, histórico do primeiro turno, prompt e resposta), `pre_tool_call`/`post_tool_call`
+  (atividade, erro e argumentos/resultado do terminal), `subagent_start`/`subagent_stop`,
+  `pre_approval_request`/`post_approval_response` e `post_api_request` (tokens de entrada/saída). Hooks opcionais só
+  entram quando o `VALID_HOOKS` da versão do Hermes os conhece.
+- **Contas e salas:** cada perfil (`~/.hermes` ou `~/.hermes/profiles/<nome>`) vira uma conta do Hermes; a sala é o
+  `project` mandado pelo plugin (o `terminal.cwd` do perfil ou `HABBLAUD_HERMES_PROJECT`). Sem eventos, a fonte não
+  aparece no snapshot/health.
+- **Presença:** `session_end` fecha; sessão sem evento por 2 h sai na varredura. `session_idle` não remove: o agente
+  fica no escritório ocioso. O plugin manda um `session_heartbeat` a cada 30 s; se o Habblaud reiniciar, o agente
+  volta em até 30 s mesmo sem um turno novo. A mesma sessão vista em dois perfis vira um agente só.
+- **Terminal:** o `HermesSource` guarda um buffer por agente (histórico do turno, prompt, resposta, ferramenta e
+  resultado) e serve o mesmo SSE `GET /api/agents/:id/terminal` do Claude Code/Codex; o subagente tem o buffer da
+  sessão filha. As ferramentas do Hermes viram `Bash/Read/Edit/Write/...` como no Claude Code.
+- **Mensagens:** `POST /api/mod/inbox` aceita `provider: 'hermes'`; o plugin busca as sessões em
+  `GET /api/hermes/sessions`, injeta com `ctx.inject_message(text, session_key=sessão)` e confirma em
+  `POST /api/mod/inbox/ack`. Se o processo não é o dono da sessão, confirma `{ok: false, retry: true}` e a mensagem
+  volta para `queued` para outro processo do mesmo perfil.
+- **Aprovações:** o plugin registra o transport `habblaud`, manda o pedido para `POST /api/permissions`
+  (`provider: 'hermes'`) e espera a decisão; `allow` vira `once`, `deny` vira `deny`. Sem página, sessão desconhecida
+  ou “Responder no terminal”, o transport falha e o Hermes usa o prompt embutido.
+- **Rotas:** `POST /api/hermes/events` (`{profile, home?, event}`) e `GET /api/hermes/sessions` só aceitam Host local
+  e, fora do Docker, conexão pelo loopback — a mesma trava de `/api/codex/events`. Corpo até 256 KB; resposta `{ok}`.
+  `hermesEvents` no `/api/health` diz se a fonte está ligada.
+- **Plugin:** `mod/habblaud-hermes` (Python, sem dependência nova) publica em fila + thread daemon, com POST de 1,5 s e
+  falha em silêncio. `HABBLAUD_HERMES=0` desliga; `HABBLAUD_HERMES_URL`/`HABBLAUD_PORT` mudam o destino;
+  `HABBLAUD_HERMES_PROJECT` força a sala. Instalação: `npm run hermes:install` (symlinks em `~/.hermes/plugins/habblaud`
+  e em `~/.hermes/profiles/*/plugins/`, `hermes plugins enable` e `hermes config set` de `allow_gateway_injection` e do
+  transport de aprovação em cada perfil); `hermes:status` e `hermes:uninstall` acompanham.
+- **Ainda fora:** sessões encerradas/antigas no terminal (o plugin só vê sessões vivas); anexos, menções e comandos de
+  barra na caixa; e escopos “sessão”/“sempre permitir” na aprovação (o transport só responde `once`/`deny`).
+- **Habblaud World:** agentes do Hermes ficam fora da projeção enquanto o protocolo do World só aceitar Claude
+  Code/Codex; eles nunca são enviados como outra ferramenta.
 
 ## Habblaud World
 

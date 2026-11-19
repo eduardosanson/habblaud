@@ -6,6 +6,7 @@ import {
   CODEX_PERMISSION_NOTE,
   destinationLabel,
   expiryText,
+  HERMES_PERMISSION_NOTE,
   isLocalHostname,
   isQuestionRequest,
   nextPermissionAgent,
@@ -65,6 +66,16 @@ describe('responder pelo escritório (peças puras)', () => {
     expect(permissionOptions({ suggestions }, { kind: 'main' })).toEqual({ always: true, interrupt: true, reasonRequired: false, seconds: false, note: '' });
     expect(permissionOptions({}, { kind: 'main' }).always).toBe(false);
     expect(permissionOptions({}, { kind: 'sub', background: true }).note).toMatch(/^Este subagente roda em segundo plano/);
+  });
+
+  it('cartão do Hermes: só aprovar/recusar, com o aviso do transport', () => {
+    expect(permissionOptions({ provider: 'hermes' }, { kind: 'main' })).toEqual({
+      always: false,
+      interrupt: false,
+      reasonRequired: false,
+      seconds: false,
+      note: HERMES_PERMISSION_NOTE,
+    });
   });
 
   it('destinationLabel', () => {

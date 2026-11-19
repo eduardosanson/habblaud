@@ -100,7 +100,9 @@ esquema do `hooks.json`).
 Fica separado do mod `habblaud` de propósito: aquele só observa; este age, digitando na sessão em seu nome. Para
 ficar sem ele: `npm run mod:install -- --sem-mensagens` (um já instalado continua; para tirar:
 `claude plugin uninstall habblaud-mensagens@habblaud`). O `npm run docker:up` atualiza o plugin de quem já o tem,
-mas não o instala sozinho: numa conta com o mod e sem ele, só dá a dica de rodar o `npm run mod:install`.
+mas não o instala sozinho: numa conta com o mod e sem ele, só dá a dica de rodar o `npm run mod:install`. O hook é
+carregado ao abrir a sessão: depois de instalar ou atualizar, reabra a sessão do Claude Code (um `--resume` também
+carrega).
 
 ### O que ele acessa
 
@@ -122,6 +124,13 @@ Porta: `HABBLAUD_PORT` (padrão 4747). Precisa do Claude Code 2.1.287+ e de um H
 mesma trava do terminal e das permissões (porta presa ao `127.0.0.1` e cabeçalho Host local) e `HABBLAUD_MENSAGENS`
 não desligado (`0`, `false`, `off` ou `no` desligam). Qualquer processo desta máquina que fale com o Habblaud
 consegue mandar uma mensagem às sessões com o plugin: por isso a trava local.
+
+## Hermes
+
+O Hermes tem um plugin próprio, em Python: [`habblaud-hermes`](habblaud-hermes/README.md). Ele não é um plugin do
+Claude Code e não entra no marketplace acima; instale com `npm run hermes:install` (symlink em
+`~/.hermes/plugins/habblaud` + `hermes plugins enable habblaud` no perfil padrão e nos perfis). O plugin só observa:
+manda eventos para `POST /api/hermes/events` e nunca lê a conversa.
 
 ## Desenvolver
 
