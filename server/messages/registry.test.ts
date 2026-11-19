@@ -8,6 +8,7 @@ import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import {
   ERR_GONE,
+  ERR_HERMES_UNAVAILABLE,
   ERR_NOT_CONFIRMED,
   ERR_NOT_FETCHED,
   ERR_OPENCODE_UNAVAILABLE,
@@ -407,6 +408,56 @@ describe('MessageRegistry: OpenCode (prompt pela API)', () => {
     expect(b.registry.get(queued)).toMatchObject({ status: 'failed', error: ERR_GONE });
     expect(b.registry.get(gone)).toMatchObject({ status: 'failed', error: ERR_GONE });
     expect(b.manual.calls.map((c) => c.text)).toEqual(['um']);
+  });
+});
+
+describe('MessageRegistry: Hermes (plugin inbox)', () => {
+  const HERMES = 'hermes:developer:s1';
+
+  function setupHermes() {
+    const s = setup();
+    s.office.addMain({ id: HERMES, provider: 'hermes', account: 'developer', sessionId: 's1', cwd: '/p/loja', role: 'Hermes', startedAt: 0, status: 'idle' });
+    return s;
+  }
+
+  it('a rodada do plugin marca presença; a mensagem vai na caixa e a confirmação entrega', () => {
+    const { office, registry } = setupHermes();
+    expect(registry.canMessage(HERMES)).toBe(false);
+    expect(registry.send({ agentId: HERMES, text: 'oi' })).toEqual({ error: 'unavailable', reason: ERR_HERMES_UNAVAILABLE });
+
+    expect(registry.inbox({ provider: 'hermes', account: 'developer', session: 's1' })).toEqual([]);
+    expect(registry.canMessage(HERMES)).toBe(true);
+    expect(snapAgent(office, HERMES)?.canMessage).toBe(true);
+    const id = sent(registry.send({ agentId: HERMES, text: 'roda os testes' }));
+    const batch = registry.inbox({ provider: 'hermes', account: 'developer', session: 's1' });
+    expect(batch).toEqual([{ id, text: 'roda os testes' }]);
+    expect(registry.get(id)?.status).toBe('sent');
+    registry.ack({ session: 's1', results: [{ id, ok: true }] });
+    expect(registry.get(id)?.status).toBe('delivered');
+    expect(snapAgent(office, HERMES)?.recent.at(-1)).toMatchObject({ text: 'Mensagem pelo Habblaud' });
+  });
+
+  it('outro processo do perfil devolve a mensagem à fila (retry) em vez de falhar', () => {
+    const { registry } = setupHermes();
+    registry.inbox({ provider: 'hermes', session: 's1' });
+    const id = sent(registry.send({ agentId: HERMES, text: 'oi' }));
+    expect(registry.inbox({ provider: 'hermes', session: 's1' })).toHaveLength(1);
+    registry.ack({ session: 's1', results: [{ id, ok: false, retry: true, error: 'não é deste processo' }] });
+    expect(registry.get(id)?.status).toBe('queued');
+    expect(registry.inbox({ provider: 'hermes', session: 's1' })).toEqual([{ id, text: 'oi' }]);
+    registry.ack({ session: 's1', results: [{ id, ok: true }] });
+    expect(registry.get(id)?.status).toBe('delivered');
+  });
+
+  it('a presença vence como no Claude Code; sem ela, a caixa do Hermes não recebe', () => {
+    const { office, registry, clock } = setupHermes();
+    registry.inbox({ provider: 'hermes', session: 's1' });
+    expect(registry.canMessage(HERMES)).toBe(true);
+    clock.advance(PRESENCE_MS);
+    expect(registry.canMessage(HERMES)).toBe(false);
+    registry.tick();
+    expect(snapAgent(office, HERMES)?.canMessage).toBeUndefined();
+    expect(registry.send({ agentId: HERMES, text: 'oi' })).toMatchObject({ error: 'unavailable' });
   });
 });
 

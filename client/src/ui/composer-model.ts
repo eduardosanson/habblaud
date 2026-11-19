@@ -12,6 +12,8 @@ export const PLUGIN_HINT = tr('Para mandar mensagens daqui: npm run mod:install 
 export const CODEX_BRIDGE_HINT = tr('Para mandar mensagens ao Codex: com o Habblaud no Docker, deixe npm run codex:bridge rodando; no modo Node funciona sozinho');
 /** Agente do OpenCode sem o serviço local resolvido (o Habblaud o encontra pelo service.json). */
 export const OPENCODE_HINT = tr('Para mandar mensagens ao OpenCode: mantenha o serviço local dele no ar (o Habblaud o encontra sozinho)');
+/** Agente do Hermes sem o plugin conectado (o plugin roda dentro do Hermes e busca a caixa a cada 2 s). */
+export const HERMES_HINT = tr('Para mandar mensagens ao Hermes: instale o plugin com npm run hermes:install e reabra a sessão');
 
 /**
  * - ready: dá para mandar (principal com o plugin conectado, recurso ligado, página local);
@@ -33,18 +35,18 @@ export function composerMode(agent: AgentInfo | undefined, env: ComposerEnv): Co
   if (env.replaying) return { kind: 'off', text: tr('Sem mensagens no timelapse: o escritório mostrado é o de outro momento') };
   if (agent?.kind === 'sub') return { kind: 'off', text: tr('Subagentes não recebem mensagens: escreva para o agente principal') };
   if (!agent || agent.status === 'offline' || agent.status === 'done') return { kind: 'off', text: tr('Sessão encerrada') };
-  if (agent.provider === 'hermes') return { kind: 'off', text: tr('Mensagens para o Hermes ainda não estão disponíveis: use o terminal dele') };
   const codex = agent.provider === 'codex';
   const opencode = agent.provider === 'opencode';
+  const hermes = agent.provider === 'hermes';
   if (!env.enabled) {
     return {
       kind: 'off',
-      text: codex ? tr('Para responder, use o Codex') : opencode ? tr('Para responder, use o terminal do OpenCode') : tr('Para responder, use o terminal do Claude Code'),
+      text: codex ? tr('Para responder, use o Codex') : opencode ? tr('Para responder, use o terminal do OpenCode') : hermes ? tr('Para responder, use o terminal do Hermes') : tr('Para responder, use o terminal do Claude Code'),
     };
   }
   if (!env.local) return { kind: 'off', text: tr('Para mandar mensagens por aqui, abra o Habblaud por http://localhost (ou 127.0.0.1)') };
   if (!agent.canMessage) {
-    return { kind: 'hint', text: codex ? CODEX_BRIDGE_HINT : opencode ? OPENCODE_HINT : PLUGIN_HINT };
+    return { kind: 'hint', text: codex ? CODEX_BRIDGE_HINT : opencode ? OPENCODE_HINT : hermes ? HERMES_HINT : PLUGIN_HINT };
   }
   return { kind: 'ready' };
 }
@@ -137,11 +139,13 @@ export const LOST_ERROR = tr('o Habblaud não conhece mais esta mensagem (ele re
 export const TIMEOUT_ERROR = tr('sem notícia da entrega: confira no terminal do Claude Code');
 export const CODEX_TIMEOUT_ERROR = tr('sem notícia da entrega: confira no Codex');
 export const OPENCODE_TIMEOUT_ERROR = tr('sem notícia da entrega: confira no OpenCode');
+export const HERMES_TIMEOUT_ERROR = tr('sem notícia da entrega: confira no Hermes');
 export const OFFLINE_ERROR = tr('não foi possível falar com o Habblaud');
 
 /** Prazo da consulta acabou sem notícia: onde conferir. */
 export function timeoutError(provider: Provider = 'claude'): string {
   if (provider === 'codex') return CODEX_TIMEOUT_ERROR;
   if (provider === 'opencode') return OPENCODE_TIMEOUT_ERROR;
+  if (provider === 'hermes') return HERMES_TIMEOUT_ERROR;
   return TIMEOUT_ERROR;
 }

@@ -22,6 +22,7 @@ import type { Activity, AgentInfo, PermissionAnswer, PermissionDecision, Permiss
 import { errMsg, log } from '../log';
 import { toolView } from '../sources/terminal';
 import { codexToolView } from './codex';
+import { hermesActivity, hermesToolView } from '../sources/hermes/events';
 import { callSignature, scanToolCall } from './transcript';
 import { tr } from '../../shared/i18n';
 
@@ -254,7 +255,7 @@ export function applyPermission(a: AgentInfo, p: PermissionRequestInfo | undefin
     a.status = 'waiting';
     a.statusSince = p.createdAt;
   }
-  a.waitingFor ??= isQuestion(p) ? tr('responder uma pergunta') : p.provider === 'codex' ? tr('aprovar um comando') : tr('aprovar uma permissão');
+  a.waitingFor ??= isQuestion(p) ? tr('responder uma pergunta') : p.provider === 'codex' || p.provider === 'hermes' ? tr('aprovar um comando') : tr('aprovar uma permissão');
   return a;
 }
 
@@ -264,7 +265,7 @@ export function applyPermission(a: AgentInfo, p: PermissionRequestInfo | undefin
  * `agent_id` é o thread do subagente (e `session_id`, o thread raiz).
  */
 export function parseHookInput(raw: unknown): {
-  provider?: 'codex';
+  provider?: 'codex' | 'hermes';
   account?: string;
   codexHome?: string;
   sessionId: string;
@@ -281,16 +282,17 @@ export function parseHookInput(raw: unknown): {
   const tool = shortStr(r?.tool_name, 200);
   if (!r || !sessionId || !tool) throw new InvalidRequest(tr('esperado o JSON do hook PermissionRequest (session_id e tool_name)'));
   const t = typeof r.timeout_ms === 'number' && Number.isFinite(r.timeout_ms) ? r.timeout_ms : DEFAULT_TIMEOUT_MS;
-  const codex = r.provider === 'codex';
+  const provider = r.provider === 'hermes' ? 'hermes' : r.provider === 'codex' ? 'codex' : undefined;
   return {
-    ...(codex ? { provider: 'codex' as const, account: shortStr(r.account, 200), codexHome: shortStr(r.codexHome, 4_096) } : {}),
+    ...(provider ? { provider, account: shortStr(r.account, 200) } : {}),
+    ...(provider === 'codex' ? { codexHome: shortStr(r.codexHome, 4_096) } : {}),
     sessionId,
     agentId: shortStr(r.agent_id, 200),
     agentType: shortStr(r.agent_type, 120),
     cwd: shortStr(r.cwd, 4_096),
     tool,
     input: rec(r.tool_input) ?? {},
-    suggestions: codex ? undefined : r.permission_suggestions,
+    suggestions: provider ? undefined : r.permission_suggestions,
     timeoutMs: Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, t)),
   };
 }
@@ -394,7 +396,12 @@ export class PermissionRegistry {
   register(raw: unknown): RegisterResult {
     const req = parseHookInput(raw);
     const codex = req.provider === 'codex';
-    const desc = codex ? codexToolView(req.tool, req.input, req.cwd) : describeTool(req.tool, req.input);
+    const hermes = req.provider === 'hermes';
+    const desc = codex
+      ? codexToolView(req.tool, req.input, req.cwd)
+      : hermes
+        ? hermesActivity(req.tool, req.input.command ?? req.input.description)
+        : describeTool(req.tool, req.input);
     const questions = 'questions' in desc ? desc.questions : undefined;
     const ask = isQuestion(req);
     // Pergunta: todas precisam aparecer no escritório (o hook só responde se cada uma tiver resposta).
@@ -408,10 +415,11 @@ export class PermissionRegistry {
 
     const now = this.now();
     const id = `p-${now.toString(36)}-${++this.seq}-${randomBytes(9).toString('base64url')}`;
-    // Codex: título, resumo e argumentos pelos nomes de ferramenta dele (permissions/codex.ts).
-    const view = 'title' in desc ? desc : toolView(req.tool, req.input, req.cwd);
+    // Codex/Hermes: título e argumentos pelos nomes de ferramenta de cada um.
+    const view = codex ? codexToolView(req.tool, req.input, req.cwd) : hermes ? hermesToolView(req.tool, req.input, req.cwd) : 'title' in desc ? desc : toolView(req.tool, req.input, req.cwd);
     const info: PermissionRequestInfo = { id, tool: req.tool, title: view.title, text: desc.text, icon: desc.icon, createdAt: now, expiresAt: now + req.timeoutMs };
     if (codex) info.provider = 'codex';
+    if (hermes) info.provider = 'hermes';
     if (view.input) info.input = view.input;
     if (view.inputKind) info.inputKind = view.inputKind;
     if (target.subagent) info.subagent = target.subagent;
@@ -423,7 +431,7 @@ export class PermissionRegistry {
       info,
       agentId: target.id,
       sessionId: req.sessionId,
-      signature: codex ? '' : callSignature(req.tool, req.input),
+      signature: codex || hermes ? '' : callSignature(req.tool, req.input),
       lastScanAt: 0,
       waiters: new Set(),
       idleSince: now,

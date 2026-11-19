@@ -60,7 +60,7 @@ export const ERR_OPENCODE_UNAVAILABLE = tr('não há como entregar ao OpenCode a
 export const ERR_OPENCODE_NOT_FETCHED = tr('o OpenCode não aceitou a mensagem a tempo');
 export const ERR_OPENCODE_NOT_CONFIRMED = tr('o OpenCode não confirmou a entrega');
 export const ERR_OPENCODE_REFUSED = tr('o OpenCode recusou a mensagem');
-export const ERR_HERMES_UNAVAILABLE = tr('Mensagens para o Hermes ainda não estão disponíveis: use o terminal dele');
+export const ERR_HERMES_UNAVAILABLE = tr('o plugin do Hermes não está conectado (npm run hermes:install e a sessão aberta)');
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -144,6 +144,8 @@ interface Entry {
   via?: 'node' | 'bridge';
   /** Mensagem a um agente do OpenCode: sai por POST /api/session/{id}/prompt. */
   opencode?: true;
+  /** Mensagem a um agente do Hermes: o plugin busca na caixa e injeta na sessão. */
+  hermes?: true;
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
   late?: boolean;
 }
@@ -191,16 +193,21 @@ export function parseSend(raw: unknown): { agentId: string; text: string } {
   return { agentId, text: r.text };
 }
 
-/** Resultados de uma confirmação ({results: [{id, ok, error?}]}): os válidos, até ACK_MAX. */
-function ackResults(raw: unknown): Array<{ id: string; ok: boolean; error?: string }> {
+/** Resultados de uma confirmação ({results: [{id, ok, error?, retry?}]}): os válidos, até ACK_MAX. */
+function ackResults(raw: unknown): Array<{ id: string; ok: boolean; error?: string; retry?: boolean }> {
   const r = rec(raw);
   if (!r || !Array.isArray(r.results)) return [];
-  const out: Array<{ id: string; ok: boolean; error?: string }> = [];
+  const out: Array<{ id: string; ok: boolean; error?: string; retry?: boolean }> = [];
   for (const item of r.results.slice(0, ACK_MAX)) {
     const x = rec(item);
     const id = shortStr(x?.id, ID_MAX);
     if (!x || !id || typeof x.ok !== 'boolean') continue;
-    out.push({ id, ok: x.ok, ...(typeof x.error === 'string' && x.error.trim() ? { error: truncate(x.error, ERROR_MAX) } : {}) });
+    out.push({
+      id,
+      ok: x.ok,
+      ...(typeof x.error === 'string' && x.error.trim() ? { error: truncate(x.error, ERROR_MAX) } : {}),
+      ...(x.retry === true ? { retry: true } : {}),
+    });
   }
   return out;
 }
@@ -306,6 +313,7 @@ export class MessageRegistry {
     if (demo) entry.demo = true;
     else if (real?.provider === 'codex') entry.codex = true;
     else if (real?.provider === 'opencode') entry.opencode = true;
+    else if (real?.provider === 'hermes') entry.hermes = true;
     this.messages.set(id, entry);
     const out = { ...entry.msg };
     if (entry.codex) this.pumpCodex();
@@ -321,17 +329,23 @@ export class MessageRegistry {
 
   /**
    * Rodada do plugin: marca a presença da sessão e entrega as próximas mensagens do agente dela (marcando-as
-   * `sent`). Sessão sem agente principal conhecido: nenhuma mensagem. Corpo inválido: lança InvalidRequest.
+   * `sent`). `provider` ausente = Claude Code; `provider: 'hermes'` = plugin do Hermes. Sessão sem agente principal
+   * conhecido: nenhuma mensagem. Corpo inválido: lança InvalidRequest.
    */
   inbox(raw: unknown): InboxMessage[] {
     const r = rec(raw);
     const session = shortStr(r?.session, ID_MAX);
-    if (!r || !session) throw new InvalidRequest('esperado {session, account?}');
+    if (!r || !session) throw new InvalidRequest('esperado {session, account?, provider?}');
     const account = shortStr(r.account, ID_MAX);
-    // O plugin é do Claude Code: agentes do Codex e do OpenCode nunca recebem por aqui.
+    const provider = shortStr(r.provider, 20) ?? 'claude';
+    // O plugin do Claude Code só entrega aos agentes do Claude Code; o do Hermes, aos do Hermes.
     const agent = this.opts.office
       .list()
-      .find((a) => a.kind === 'main' && (a.provider ?? 'claude') === 'claude' && a.sessionId === session && (!account || a.account === account) && present(a));
+      .find((a) =>
+        provider === 'hermes'
+          ? a.kind === 'main' && a.provider === 'hermes' && a.sessionId === session && (!account || a.account === account) && present(a)
+          : a.kind === 'main' && (a.provider ?? 'claude') === 'claude' && a.sessionId === session && (!account || a.account === account) && present(a),
+      );
     if (!agent) return [];
 
     const now = this.now();
@@ -367,7 +381,12 @@ export class MessageRegistry {
       if (!e || e.demo || e.codex || e.session !== session) continue;
       if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) continue;
       if (x.ok) this.finish(e, 'delivered', now);
-      else this.fail(e, now, x.error ?? ERR_REFUSED);
+      else if (e.hermes && x.retry) {
+        // Hermes: outro processo do perfil pode ser o dono da sessão. Devolve à fila para ele buscar.
+        this.setStatus(e, 'queued', now);
+        delete e.session;
+        delete e.sentAt;
+      } else this.fail(e, now, x.error ?? ERR_REFUSED);
     }
   }
 

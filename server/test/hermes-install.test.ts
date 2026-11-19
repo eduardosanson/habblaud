@@ -70,19 +70,24 @@ describe('instalador do Hermes: fluxo com runner falso', () => {
     };
     expect(await main(['install'], { home, run, out: (l) => out.push(l) })).toBe(0);
     expect(linkState(pluginLink(home))).toBe('ours');
-    expect(calls).toEqual([
+    expect(calls.slice(0, 2)).toEqual([
       ['hermes', 'plugins', 'enable', 'habblaud'],
       ['hermes', '-p', 'dev', 'plugins', 'enable', 'habblaud'],
     ]);
+    expect(calls).toContainEqual(['hermes', 'config', 'set', 'security.approval.transport', 'habblaud']);
+    expect(calls).toContainEqual(['hermes', 'config', 'set', 'security.approval.transport_fallback', 'builtin']);
+    expect(calls).toContainEqual(['hermes', '-p', 'dev', 'config', 'set', 'plugins.entries.habblaud.allow_gateway_injection', 'true']);
     expect(out.join('\n')).toContain('Reinicie as sessões');
 
     calls.length = 0;
     expect(await main(['uninstall'], { home, run, out: (l) => out.push(l) })).toBe(0);
     expect(linkState(pluginLink(home))).toBe('missing');
-    expect(calls).toEqual([
+    expect(calls.slice(0, 2)).toEqual([
       ['hermes', 'plugins', 'disable', 'habblaud'],
       ['hermes', '-p', 'dev', 'plugins', 'disable', 'habblaud'],
     ]);
+    expect(calls).toContainEqual(['hermes', 'config', 'unset', 'security.approval.transport']);
+    expect(calls).toContainEqual(['hermes', '-p', 'dev', 'config', 'unset', 'plugins.entries.habblaud.allow_gateway_injection']);
   });
 
   it('--dry-run não grava; --no-enable só liga o symlink; pasta de verdade não é sobrescrita', async () => {

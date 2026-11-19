@@ -53,6 +53,22 @@ export function hermesPluginCommands(home: string, action: 'enable' | 'disable')
   return [[`plugins`, action, PLUGIN_NAME], ...hermesProfiles(home).map((p) => ['-p', p, 'plugins', action, PLUGIN_NAME])];
 }
 
+/** Configuração que o plugin precisa: mensagens (inject_message) e aprovações pelo escritório. */
+export function hermesConfigCommands(home: string, action: 'set' | 'unset'): string[][] {
+  const values: Record<string, string> = {
+    'plugins.entries.habblaud.allow_gateway_injection': 'true',
+    'security.approval.transport': PLUGIN_NAME,
+    'security.approval.transport_fallback': 'builtin',
+  };
+  const out: string[][] = [];
+  for (const profile of [undefined, ...hermesProfiles(home)]) {
+    for (const [key, value] of Object.entries(values)) {
+      out.push([...(profile ? ['-p', profile] : []), 'config', action, key, ...(action === 'set' ? [value] : [])]);
+    }
+  }
+  return out;
+}
+
 export function pluginLink(home: string): string {
   return join(home, 'plugins', PLUGIN_NAME);
 }
@@ -128,6 +144,20 @@ function install(opts: HermesInstallOptions, out: (line: string) => void): numbe
       failed = true;
     }
   }
+  if (!failed) {
+    for (const args of hermesConfigCommands(opts.home, 'set')) {
+      const shown = ['hermes', ...args].join(' ');
+      if (opts.dryRun) {
+        out(`  ${shown}`);
+        continue;
+      }
+      const r = run('hermes', args);
+      if (r.missing || !r.ok) {
+        out(`Não consegui configurar: ${shown}`);
+        failed = true;
+      }
+    }
+  }
   out('Reinicie as sessões do Hermes para carregar o plugin.');
   return failed ? 1 : 0;
 }
@@ -141,6 +171,14 @@ function uninstall(opts: HermesInstallOptions, out: (line: string) => void): num
     else {
       const r = run('hermes', args);
       if (r.missing || !r.ok) out(`Não consegui rodar: ${shown}`);
+    }
+  }
+  for (const args of hermesConfigCommands(opts.home, 'unset')) {
+    const shown = ['hermes', ...args].join(' ');
+    if (opts.dryRun) out(`  ${shown}`);
+    else {
+      const r = run('hermes', args);
+      if (r.missing || !r.ok) out(`Não consegui limpar: ${shown}`);
     }
   }
   if (linkState(link) === 'ours') {

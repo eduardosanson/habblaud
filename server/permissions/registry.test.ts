@@ -101,6 +101,39 @@ describe('PermissionRegistry: registro', () => {
     expect(() => registry.register({ session_id: SESSION })).toThrow();
   });
 
+  it('Hermes: o pedido vira cartão provider hermes e a decisão allow/deny responde ao transport', async () => {
+    const { office, registry } = setup();
+    office.addMain({ id: 'hermes:developer:s1', provider: 'hermes', account: 'developer', sessionId: 's1', cwd: '/p/loja', role: 'Hermes', startedAt: 0, status: 'working' });
+    const id = registered(
+      registry.register({
+        provider: 'hermes',
+        account: 'developer',
+        session_id: 's1',
+        tool_name: 'terminal',
+        tool_input: { command: 'rm -rf /tmp/x', description: 'Apagar a pasta temporária' },
+        timeout_ms: 60_000,
+      }),
+    );
+    expect(registry.detail(id)).toMatchObject({ provider: 'hermes', title: 'Bash(rm -rf /tmp/x)' });
+    const wait = registry.wait(id, 5_000);
+    expect(registry.decide(id, { behavior: 'allow' })).toBe('ok');
+    await expect(wait!.result).resolves.toMatchObject({ status: 'decided', behavior: 'allow' });
+
+    const second = registered(
+      registry.register({
+        provider: 'hermes',
+        account: 'developer',
+        session_id: 's1',
+        tool_name: 'terminal',
+        tool_input: { command: 'ls' },
+        timeout_ms: 60_000,
+      }),
+    );
+    const denied = registry.wait(second, 5_000);
+    expect(registry.decide(second, { behavior: 'deny', message: 'não' })).toBe('ok');
+    await expect(denied!.result).resolves.toMatchObject({ status: 'decided', behavior: 'deny' });
+  });
+
   it('publica no snapshot: status waiting, título e resumo, sugestão, SEM os argumentos; feed e aviso', () => {
     const { office, registry, clock } = setup();
     office.commit();

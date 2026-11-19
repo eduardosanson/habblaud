@@ -40,3 +40,8 @@ export async function handleHermesEvent(
   }
   sendJson(res, 200, { ok });
 }
+
+/** GET /api/hermes/sessions: as sessões principais no escritório, para o plugin buscar mensagens por sessão. */
+export function handleHermesSessions(_req: IncomingMessage, res: ServerResponse, deps: { source?: HermesSource }): void {
+  sendJson(res, 200, { sessions: deps.source?.sessions() ?? [] });
+}

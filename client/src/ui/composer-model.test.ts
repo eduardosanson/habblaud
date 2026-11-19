@@ -8,6 +8,8 @@ import {
   composerTip,
   DELIVERED_SHOW_MS,
   enterSends,
+  HERMES_HINT,
+  HERMES_TIMEOUT_ERROR,
   isSettled,
   messageText,
   OPENCODE_HINT,
@@ -138,13 +140,14 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(timeoutError('opencode')).toBe(OPENCODE_TIMEOUT_ERROR);
   });
 
-  it('Hermes: ainda sem mensagens; a caixa diz para usar o terminal dele', () => {
+  it('Hermes: com o plugin conectado, igual ao Claude Code; sem ele, a dica do plugin', () => {
     const hermes = (over: Partial<AgentInfo> = {}) => agent({ provider: 'hermes', ...over });
-    for (const a of [hermes(), hermes({ canMessage: true }), hermes({ canMessage: undefined })]) {
-      expect(composerMode(a, ON)).toEqual({ kind: 'off', text: 'Mensagens para o Hermes ainda não estão disponíveis: use o terminal dele' });
-    }
+    expect(composerMode(hermes(), ON)).toEqual({ kind: 'ready' });
+    expect(composerMode(hermes({ canMessage: undefined }), ON)).toEqual({ kind: 'hint', text: HERMES_HINT });
+    expect(composerMode(hermes(), { ...ON, enabled: false })).toEqual({ kind: 'off', text: 'Para responder, use o terminal do Hermes' });
     expect(composerMode(hermes({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
     expect(composerMode(hermes({ kind: 'sub', parentId: 'acc:1' }), ON).kind).toBe('off');
+    expect(timeoutError('hermes')).toBe(HERMES_TIMEOUT_ERROR);
   });
 
   it('consulta da entrega: rápida no começo, mais espaçada depois', () => {
