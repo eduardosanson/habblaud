@@ -5,7 +5,7 @@
 <h1 align="center">Habblaud</h1>
 
 <p align="center">
-  <b>The virtual office for your Claude Code (and Codex) agents.</b><br />
+  <b>The virtual office for your Claude Code (and Codex, OpenCode and Hermes) agents.</b><br />
   Each project becomes a room, and each agent becomes a pixel-art character that shows, in real time, what it's doing.
 </p>
 
@@ -34,9 +34,9 @@ And when two or more agents have nothing to do, the office gets a **social life*
 and they watch soccer together in the lounge, play video games and ping-pong, gossip in the kitchen, freshen up at the
 mirror and bet coins on rock-paper-scissors. See [Social life](#social-life).
 
-Everything runs on your machine, reading the files Claude Code itself already writes (plus only the `alias` lines in
-your shell, to give each account its letter). Nothing leaves the computer: Habblaud doesn't read credentials or make
-external calls.
+Everything runs on your machine, reading the files Claude Code and Codex already write, the local OpenCode service and
+the Hermes hooks you install (plus only the `alias` lines in your shell, to give each account its letter). Nothing leaves
+the computer: Habblaud doesn't read credentials or make external calls.
 
 ## Contents
 
@@ -129,6 +129,8 @@ shrinks on its own.
 
 - **macOS** (tested) or Linux.
 - **[Claude Code](https://code.claude.com)** installed, with one or more accounts (2.1.287 or newer for the mod).
+- Optional: **Codex**, **OpenCode** (V2, with the local service running) and **Hermes** (with Python plugins); each one
+  joins the same office when it has an open session.
 - **Node.js 22.12+** and **npm** (developed with Node 24; Docker already uses Node 24).
 - **Docker Desktop** (or Docker Engine with Compose v2), if you're going to run it in a container.
 
@@ -227,6 +229,25 @@ npm run codex:status       # confere
 Then **open Codex and approve the Habblaud hooks in `/hooks`**: Codex only runs a new hook after you
 approve it (Habblaud never writes that approval). With Habblaud in Docker, to send messages to Codex sessions,
 also keep `npm run codex:bridge` running on the Mac (see [Codex](#codex)).
+
+### 5. OpenCode and Hermes in the office (optional)
+
+**OpenCode.** If the OpenCode V2 local service is running, its sessions join the same office with no plugin or hook:
+Habblaud finds `service.json` (or `HABBLAUD_OPENCODE_URL` / `HABBLAUD_OPENCODE_PASSWORD`), reads the session list and the
+live event stream, and the project folder becomes the room. The terminal, the history and the message box work through the
+same local service; the password stays in memory and never reaches the page, the snapshot or the logs.
+`HABBLAUD_OPENCODE=0` turns it off. See [OpenCode](#opencode).
+
+**Hermes.** Install the plugin once:
+
+```bash
+npm run hermes:install
+npm run hermes:status
+```
+
+The installer links `mod/habblaud-hermes` into `~/.hermes/plugins/habblaud` and each profile, enables `habblaud` in the
+default profile and every profile, and sets `allow_gateway_injection` plus the approval transport in each one. Restart the
+Hermes sessions afterwards (the plugin is loaded when a session opens). See [Hermes](#hermes).
 
 ### Open on your phone (optional)
 
@@ -348,6 +369,7 @@ npm run docker:up        # tira o container codetown e copia os dados do volume 
 ```bash
 npm run mod:uninstall                       # tira o mod, os plugins de permissões e de mensagens e o marketplace
 npm run codex:uninstall                     # tira os hooks do Habblaud do Codex (os outros ficam)
+npm run hermes:uninstall                    # tira o plugin do Hermes e as chaves de mensagens/aprovação
 npm run docker:down                         # para o container
 docker volume rm habblaud_habblaud-data     # apaga os dados do container (nomes, salas, linha do tempo e estatísticas)
 docker image rm habblaud:local              # apaga a imagem
@@ -608,6 +630,42 @@ Codex account chip is hollow and carries the **CODEX** tag.
   little while to leave after you close the terminal.
 - ChatGPT cloud conversations (with no file on the computer) don't show up. `HABBLAUD_CODEX=0` turns Codex off.
 
+### OpenCode
+
+OpenCode V2 sessions join the office through its local HTTP/SSE service: character, project room, subagents, current
+activity, terminal, history of the last seven days, messages and the 5-hour/weekly usage card. There's no plugin to install:
+Habblaud reads `$XDG_STATE_HOME/opencode/service.json` (or `~/.local/state/opencode/service.json`) and uses the password only
+in memory. `HABBLAUD_OPENCODE=0` turns it off; `HABBLAUD_OPENCODE_URL` / `HABBLAUD_OPENCODE_PASSWORD` point to an explicit
+service. Archived sessions older than `HABBLAUD_OPENCODE_RECENT_MIN` minutes (default 120) stay out, and active ones always
+show up.
+
+- **Terminal and history:** the conversation comes from the service messages, not from SQLite; the same terminal window
+  shows prompts, responses, reasoning, tools and results, for the main agent and subagents.
+- **Messages:** the office box sends a prompt to the session queue (`POST /api/session/{id}/prompt`), one at a time, and
+  marks it delivered when the service accepts it. Text only: no attachments or slash commands.
+- **Approvals:** the character raises a hand when OpenCode asks for permission, but answering still happens in OpenCode;
+  the office has no approval card for it in this version.
+- **Docker:** use the `HABBLAUD_OPENCODE_*` variables (the container can't see the host's `service.json` or loopback).
+- **Habblaud World:** OpenCode agents stay out while the World protocol only accepts Claude Code/Codex.
+
+### Hermes
+
+Hermes sessions join through the Python plugin in [`mod/habblaud-hermes`](mod/habblaud-hermes): the plugin listens to the
+Hermes hooks and sends small events to `127.0.0.1`. Each Hermes profile becomes an account (“Hermes” + the profile
+initials), and each project becomes a room.
+
+- **Terminal:** prompts, responses, tools and results of the open session (and its subagent) appear in the same terminal;
+  the first turn also brings the existing conversation. Closed or old sessions stay out: the plugin only sees live sessions.
+- **Messages:** the office box is fetched by the plugin and injected with `ctx.inject_message`; if another process of the same
+  profile owns the session, the message goes back to the queue and is delivered by the owner. Text only.
+- **Approvals:** the plugin registers a Habblaud approval transport. **Approve** answers `once`, **Deny** denies, and
+  “Reply in terminal” returns the request to Hermes' built-in prompt. There's no “always allow” from the office.
+- **Heartbeat:** every 30 s the plugin refreshes the live sessions, so restarting Habblaud doesn't hide Hermes until the next
+  turn; the same session seen through two profiles becomes a single agent.
+- **Install/uninstall:** `npm run hermes:install`, `npm run hermes:status`, `npm run hermes:uninstall`. Hooks are optional
+  and only register when the Hermes version knows them. `HABBLAUD_HERMES=0` turns the plugin off.
+- **Habblaud World:** Hermes agents stay out while the World protocol only accepts Claude Code/Codex.
+
 ### GitHub in the office
 
 What the agents do on GitHub livens up the project's room, with no token and no internet access: Habblaud reads the
@@ -733,6 +791,10 @@ Everything works without configuring anything. If you need to adjust something, 
 | `HABBLAUD_OPENCODE_SERVICE` | `$XDG_STATE_HOME/opencode/service.json` | Another path for the OpenCode local service registration. |
 | `HABBLAUD_OPENCODE_URL` / `HABBLAUD_OPENCODE_PASSWORD` | — | Explicit OpenCode service (for example, in Docker); they replace the `service.json`. |
 | `HABBLAUD_OPENCODE_RECENT_MIN` | `120` | How many minutes a viewed/updated session stays in the office (active ones always stay). `0` = active only. |
+| `HABBLAUD_HERMES` | on (with the plugin) | `0` turns the Hermes plugin off; without events, Hermes disappears from the office. |
+| `HABBLAUD_HERMES_URL` | `http://127.0.0.1:4747/api/hermes/events` | Where the Hermes plugin sends events (use the published port in Docker). |
+| `HABBLAUD_HERMES_PROJECT` | profile `terminal.cwd` | Forces the room for the sessions of that Hermes profile. |
+| `HABBLAUD_HERMES_HOME` | `~/.hermes` | Base Hermes folder used by `npm run hermes:install`. |
 | `HABBLAUD_UPDATE_CHECK` | on | `0` turns off the new-version check (a request to the repository's releases on GitHub every 6 h). |
 | `HABBLAUD_LANG` | system language (except English), otherwise `pt-BR` | Language of the texts the server builds (activities, notices, logs): `pt-BR`, `en`, `es` or `fr`. The interface follows the browser or the choice in Settings › Language. See [Languages](#languages). |
 | `HABBLAUD_ACCOUNTS` | — | JSON to customize name, letter or color, matched by the account folder name. E.g. `[{"id":".claude-conta2","name":"Trabalho","short":"T","color":"#5cc97b"}]`. |
@@ -855,6 +917,7 @@ How the section looks, in demo mode (`?mock=1&world=logged_out`, `waiting` or `a
  .../<sessão>/subagents/**/agent-*.jsonl ────────┘    (polling de 1 s)                                 (canvas + interface)
 ```
 
+- **Other harnesses:** Codex reads its own session files, OpenCode talks to its local HTTP/SSE service and Hermes uses the Python plugin. They all feed the same office model, so rooms, characters, terminal, permissions and messages work the same way, with the limitations listed above.
 - **Who's in the office:** while a session is open, Claude Code keeps `sessions/<pid>.json` with the
   project and the status (busy, idle, waiting on you or waiting on a background shell). That's what decides
   who shows up and what each one does.
@@ -942,6 +1005,12 @@ metadata (letter, email, organization) is read on the host by `docker:up` and pa
   `127.0.0.1`. It doesn't read the conversation, doesn't call the model and doesn't send anything off the computer. It's loaded from this
   folder: whatever is in it (including after a `git pull`) is what runs. The messages plugin
   (`habblaud-mensagens`) is separate precisely because it acts: it types into the session what you sent from the office.
+- **OpenCode:** the password from `service.json` (or `HABBLAUD_OPENCODE_PASSWORD`) is used only in memory for the local
+  service; it never appears in the snapshot, the page or the logs. Habblaud doesn't read OpenCode's SQLite or credentials.
+- **Hermes:** the plugin runs inside Hermes with your permissions, listens to hooks and sends the session text/tools to
+  Habblaud at `127.0.0.1`; it doesn't read credentials, `state.db` or transcripts. The installer only runs
+  `hermes plugins enable` and `hermes config set` for the keys listed above. Messages and approvals act on the session,
+  so they follow the same local-only safeguard as the terminal; `HABBLAUD_HERMES=0` turns the plugin off.
 - **Local only, by default:** the server only accepts connections from the computer it runs on; opening it to the local network is optional.
   There's no telemetry. The only external call is the new-version check: every 6 hours, an anonymous request,
   with no token, to the public GitHub API (`api.github.com/repos/marmottajr/habblaud/releases/latest`). It doesn't send anything
