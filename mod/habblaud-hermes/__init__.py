@@ -28,7 +28,6 @@ import queue
 import re
 import threading
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -152,9 +151,13 @@ def _text_of(value: Any, limit: int = 20_000) -> str:
                 parts.append("[imagem]")
         return _clip("\n".join(parts), limit)
     if isinstance(value, dict):
-        for key in ("text", "content", "message"):
+        for key in ("text", "content", "message", "output", "result"):
             if key in value:
                 return _text_of(value[key], limit)
+        try:
+            return _clip(json.dumps(value, ensure_ascii=False, default=str), limit)
+        except Exception:
+            return ""
     return ""
 
 
@@ -403,7 +406,7 @@ def _publish_history(session_id: str, history: Any) -> None:
     if not isinstance(history, list) or not history:
         return
     messages = []
-    for item in history[-100:]:
+    for item in history[-101:]:
         if not isinstance(item, dict):
             continue
         role = item.get("role")
@@ -412,6 +415,10 @@ def _publish_history(session_id: str, history: Any) -> None:
         text = _text_of(item.get("content"))
         if text.strip():
             messages.append({"role": role, "content": text})
+    # A lista do hook termina com a mensagem deste turno; ela sai em user_message, não no histórico.
+    if messages and messages[-1]["role"] == "user":
+        messages.pop()
+    messages = messages[-100:]
     if messages:
         _publish({"type": "history", "session_id": session_id, "messages": messages})
 
@@ -489,7 +496,8 @@ def _subagent_stop(**kw: Any) -> None:
 
 
 def _approval_identity(kw: Dict[str, Any]) -> tuple[str, str]:
-    sid = str(kw.get("session_id") or _current_session_id.get() or "")
+    # O hook documenta `session_key`; em CLI/TUI ele é o id da sessão. O id de observabilidade vem quando existe.
+    sid = str(kw.get("session_id") or _current_session_id.get() or kw.get("session_key") or "")
     call = str(kw.get("tool_call_id") or kw.get("call_id") or "")
     if not call and sid == _current_session_id.get():
         call = _current_call_id.get()

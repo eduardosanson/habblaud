@@ -123,7 +123,8 @@ def test_llm_turn_sends_history_prompt_and_response_once(tmp_path, monkeypatch):
         {"role": "system", "content": "prompt do sistema"},
         {"role": "user", "content": "primeira"},
         {"role": "assistant", "content": "resposta"},
-        {"role": "tool", "content": "ignorar"},
+        # O hook entrega a lista com a mensagem deste turno no fim; ela não pode repetir no histórico.
+        {"role": "user", "content": "agora"},
     ]
     plugin._pre_llm_call(session_id="s1", turn_id="t1", user_message="agora", conversation_history=history)
     kinds = [e["type"] for e in events]
@@ -137,6 +138,16 @@ def test_llm_turn_sends_history_prompt_and_response_once(tmp_path, monkeypatch):
     plugin._post_llm_call(session_id="s1", turn_id="t2", assistant_response="feito")
     assert [e["type"] for e in events] == ["user_message", "session_busy", "assistant_message", "session_idle"]
     assert events[2]["text"] == "feito"
+
+
+def test_approval_context_falls_back_to_session_key(tmp_path, monkeypatch):
+    plugin = load(tmp_path)
+    monkeypatch.setattr(plugin, "_publish", lambda event: None)
+    # O contrato documenta session_key; session_id nem sempre vem no hook.
+    plugin._pre_approval_request(session_key="sess-9", request_id="r9", command="ls", surface="cli")
+    assert plugin._approval_context["r9"]["session_id"] == "sess-9"
+    plugin._post_approval_response(session_key="sess-9", request_id="r9", choice="once")
+    assert "r9" not in plugin._approval_context
 
 
 def test_approval_transport_posts_to_the_office_and_returns_the_choice(tmp_path, monkeypatch):
@@ -211,3 +222,27 @@ def test_inbox_poller_injects_and_acks_only_what_it_delivered(tmp_path, monkeypa
     assert [a["results"][0]["id"] for a in acks] == ["m-s1", "m-s2"]
     assert acks[0]["results"][0]["ok"] is True
     assert acks[1]["results"][0]["ok"] is False and acks[1]["results"][0]["retry"] is True
+
+
+def test_register_optional_hooks_and_approval_transport(tmp_path, monkeypatch):
+    plugin = load(tmp_path)
+    registered = []
+
+    class Ctx:
+        def register_hook(self, name, callback):
+            registered.append(name)
+
+        def register_approval_transport(self, name, present):
+            registered.append(f"transport:{name}")
+
+    monkeypatch.setattr(plugin, "_start_poller", lambda: registered.append("poller"))
+    pkg = types.ModuleType("hermes_cli")
+    pkg.__path__ = []
+    mod = types.ModuleType("hermes_cli.plugins")
+    mod.VALID_HOOKS = {"pre_llm_call"}
+    monkeypatch.setitem(sys.modules, "hermes_cli", pkg)
+    monkeypatch.setitem(sys.modules, "hermes_cli.plugins", mod)
+    plugin.register(Ctx())
+    assert "pre_llm_call" in registered
+    assert "transport:habblaud" in registered
+    assert "poller" in registered
