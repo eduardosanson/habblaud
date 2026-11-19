@@ -26,10 +26,14 @@ do meio (0.**3**.0).
   OpenCode, que o coloca na fila da sessão. É uma mensagem por vez, na ordem, e a linha de situação mostra a fila e a
   entrega como no Codex. Para o Claude Code, a dica agora lembra que o plugin de mensagens carrega ao abrir a sessão:
   instalar com a sessão já aberta não basta.
-- **Hermes no escritório (leitura ao vivo).** Um plugin Python observa os hooks do Hermes e mostra no Habblaud as
-  sessões, o que cada uma está fazendo, ferramentas, subagentes, aprovações (só o estado “esperando”) e tokens. Cada
-  perfil do Hermes vira uma conta e a sala é o diretório de trabalho do perfil. Nesta fase o terminal e as mensagens
-  do Hermes ainda não existem; o escritório avisa e a conversa continua no próprio Hermes.
+- **Hermes no escritório.** Um plugin Python observa os hooks do Hermes e mostra no Habblaud as sessões, o que cada
+  uma está fazendo, ferramentas, subagentes, tokens e as aprovações. Cada perfil do Hermes vira uma conta e a sala é
+  o diretório de trabalho do perfil.
+- **Terminal, mensagens e aprovações do Hermes.** A conversa da sessão aberta aparece no terminal do Habblaud
+  (prompts, respostas, ferramentas e resultados, inclusive no subagente). A caixa de mensagem injeta o texto na
+  sessão pelo `ctx.inject_message` do Hermes, com fila e confirmação de entrega. E os pedidos de aprovação viram
+  cartões no escritório: aprovar ou recusar responde ao Hermes, e “Responder no terminal” devolve o pedido para lá.
+  O instalador configura as chaves necessárias em cada perfil e o `uninstall` limpa.
 
 ## [1.0.3] - 2026-10-16
 

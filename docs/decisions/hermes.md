@@ -18,6 +18,24 @@
 
 ## BUILD → EVIDÊNCIAS — 2026-11-19
 
-- Decisão: o instalador usa symlink (como o pixel-office) e `hermes plugins enable` por perfil; não edita YAML nem mexe em confiança/permissões.
+- Decisão: o instalador usa symlink (como o pixel-office) e `hermes plugins enable` por perfil; não edita YAML na mão, só usa `hermes config set` para as chaves do plugin.
 - Decisão: a rota segue a trava dos eventos do Codex (Host local + loopback fora do Docker); no Docker o plugin fala com a porta publicada.
-- Risco aceito: o plugin não responde aprovações; o agente fica `waiting` e a decisão continua no Hermes.
+- Risco aceito: a Fase A só observava aprovações; a Fase B adiciona o transport e o cartão do escritório.
+
+## SPEC → PROMPT PLAN (Fase B) — 2026-11-19
+
+- Decisão: o terminal vem dos hooks (`pre/post_llm_call`, `tool_start`/`tool_end`) para um buffer por agente, não de transcript/SQLite — o plugin já tem o texto e não precisa de API key.
+- Decisão: mensagens usam o `ctx.inject_message` oficial do Hermes, com a caixa do plugin e `retry` quando outro processo do perfil não é o dono da sessão.
+- Decisão: aprovações usam o `register_approval_transport` oficial; `allow` vira `once` e `deny` vira `deny`.
+
+## TDD → BUILD (Fase B) — 2026-11-19
+
+- Decisão: o instalador liga `security.approval.transport: habblaud` com `transport_fallback: builtin` — sem página, o Hermes volta ao prompt do terminal em vez de negar.
+- Decisão: a conversa é mascarada/cortada no servidor com as mesmas regras do terminal do Claude Code; o plugin só manda o que o hook entregou.
+- Risco aceito: o terminal não lista sessões encerradas/antigas; isso exigiria `state.db` ou a API autenticada.
+
+## BUILD → EVIDÊNCIAS (Fase B) — 2026-11-19
+
+- Decisão: o cartão de permissão do Hermes só oferece aprovar/recusar (sem “sempre permitir”); o transport não devolve escopo `session`/`always`.
+- Decisão: o endpoint `/api/hermes/sessions` é local e lista só as sessões principais vivas, para o plugin buscar mensagens sem conhecer o banco.
+- Risco aceito: mensagens para uma sessão que nenhum processo do perfil tem falham no prazo da fila; o plugin devolve `retry` para os outros processos tentarem.
