@@ -10,6 +10,7 @@ import {
   ERR_GONE,
   ERR_NOT_CONFIRMED,
   ERR_NOT_FETCHED,
+  ERR_OPENCODE_UNAVAILABLE,
   ERR_REFUSED,
   ERR_SESSION_CHANGED,
   INBOX_BATCH,
@@ -19,6 +20,7 @@ import {
   PRESENCE_MS,
   QUEUED_TIMEOUT_MS,
   SENT_TIMEOUT_MS,
+  type OpenCodeDeliveryOptions,
   type SendResult,
 } from './registry';
 
@@ -295,6 +297,116 @@ describe('MessageRegistry: prazos e limpeza', () => {
     registry.tick();
     expect(registry.get(id)).toBeUndefined();
     expect(registry.size).toBe(0);
+  });
+});
+
+describe('MessageRegistry: OpenCode (prompt pela API)', () => {
+  const OPEN = 'opencode:ses_1';
+  const OPEN_OTHER = 'opencode:ses_2';
+
+  interface Call {
+    sessionId: string;
+    text: string;
+    ok: () => void;
+    fail: (err: unknown) => void;
+  }
+
+  function manualPrompt() {
+    const calls: Call[] = [];
+    const prompt = (sessionId: string, text: string) =>
+      new Promise<void>((ok, fail) => {
+        calls.push({ sessionId, text, ok: () => ok(), fail });
+      });
+    return { calls, prompt };
+  }
+
+  function setupOpenCode(delivery?: Partial<OpenCodeDeliveryOptions> | null) {
+    let now = 1_000_000;
+    const clock = { now: () => now, advance: (ms: number) => (now += ms) };
+    let registry: MessageRegistry | undefined;
+    const office = new Office({
+      names: new NameStore(null),
+      version: 't',
+      startedAt: 0,
+      accounts: () => [],
+      sources: () => [],
+      accountName: () => undefined,
+      messages: () => registry?.reachable() ?? new Set(),
+      now: clock.now,
+    });
+    const manual = manualPrompt();
+    office.addMain({ id: OPEN, provider: 'opencode', account: 'opencode', sessionId: 'ses_1', cwd: '/p/loja', role: 'Agente build', startedAt: 0, status: 'idle' });
+    office.addMain({ id: OPEN_OTHER, provider: 'opencode', account: 'opencode', sessionId: 'ses_2', cwd: '/p/api', role: 'Agente build', startedAt: 0, status: 'idle' });
+    registry = new MessageRegistry({
+      office,
+      ...(delivery === null ? {} : { opencode: { prompt: manual.prompt, available: () => true, ...delivery } }),
+      now: clock.now,
+    });
+    return { office, registry, clock, manual };
+  }
+
+  const flush = () => new Promise<void>((ok) => setTimeout(ok, 0));
+
+  it('principal do OpenCode recebe: prompt na sessão certa, um por agente, na ordem; delivered quando o serviço aceita', async () => {
+    const { office, registry, manual } = setupOpenCode();
+    expect(snapAgent(office, OPEN)?.canMessage).toBe(true);
+    expect(snapAgent(office, OPEN_OTHER)?.canMessage).toBe(true);
+    const a = sent(registry.send({ agentId: OPEN, text: 'roda os testes' }));
+    const b = sent(registry.send({ agentId: OPEN, text: 'depois' }));
+    expect(registry.get(a)?.status).toBe('sent');
+    expect(registry.get(b)?.status).toBe('queued');
+    expect(manual.calls.map((c) => [c.sessionId, c.text])).toEqual([['ses_1', 'roda os testes']]);
+    // O plugin do Claude Code nunca busca uma mensagem do OpenCode.
+    expect(registry.inbox({ session: 'ses_1', account: 'opencode' })).toEqual([]);
+
+    manual.calls[0].ok();
+    await flush();
+    expect(registry.get(a)).toMatchObject({ status: 'delivered' });
+    expect(registry.get(b)?.status).toBe('sent');
+    expect(manual.calls.map((c) => [c.sessionId, c.text])).toEqual([
+      ['ses_1', 'roda os testes'],
+      ['ses_1', 'depois'],
+    ]);
+    manual.calls[1].ok();
+    await flush();
+    expect(registry.get(b)).toMatchObject({ status: 'delivered' });
+    const feed = office.commit().feed.map((f) => f.activity);
+    expect(feed.map((x) => x.text)).toEqual(['Mensagem pelo Habblaud', 'Mensagem pelo Habblaud']);
+    expect(feed[0].detail).toBe('roda os testes');
+  });
+
+  it('recusa do serviço vira failed com o motivo; sem serviço, o agente não recebe (com a dica)', async () => {
+    let s = setupOpenCode();
+    const id = sent(s.registry.send({ agentId: OPEN, text: 'oi' }));
+    s.manual.calls[0].fail(new Error('OpenCode respondeu 404'));
+    await flush();
+    expect(s.registry.get(id)).toMatchObject({ status: 'failed', error: 'OpenCode respondeu 404' });
+
+    s = setupOpenCode({ available: () => false });
+    expect(s.registry.canMessage(OPEN)).toBe(false);
+    expect(s.registry.send({ agentId: OPEN, text: 'oi' })).toEqual({ error: 'unavailable', reason: ERR_OPENCODE_UNAVAILABLE });
+  });
+
+  it('mensagem atrás de outra e troca de sessão/agente que sai: falha com o motivo, sem mandar a segunda', async () => {
+    const a = setupOpenCode();
+    const first = sent(a.registry.send({ agentId: OPEN, text: 'um' }));
+    const second = sent(a.registry.send({ agentId: OPEN, text: 'dois' }));
+    a.office.switchSession(OPEN, 'ses_nova');
+    a.registry.tick();
+    expect(a.registry.get(second)).toMatchObject({ status: 'failed', error: ERR_SESSION_CHANGED });
+    expect(a.manual.calls.map((c) => c.text)).toEqual(['um']);
+    a.manual.calls[0].ok();
+    await flush();
+    expect(a.registry.get(first)?.status).toBe('delivered');
+
+    const b = setupOpenCode();
+    const queued = sent(b.registry.send({ agentId: OPEN, text: 'um' }));
+    const gone = sent(b.registry.send({ agentId: OPEN, text: 'dois' }));
+    b.office.closeMain(OPEN);
+    b.registry.tick();
+    expect(b.registry.get(queued)).toMatchObject({ status: 'failed', error: ERR_GONE });
+    expect(b.registry.get(gone)).toMatchObject({ status: 'failed', error: ERR_GONE });
+    expect(b.manual.calls.map((c) => c.text)).toEqual(['um']);
   });
 });
 

@@ -39,7 +39,7 @@ import {
   sessionTitle,
   type OpenCodeSession,
 } from './map';
-import { createOpenCodeMessageStream } from './terminal';
+import { createOpenCodeMessageStream, isOpenCodeSessionId } from './terminal';
 import { tr } from '../../../shared/i18n';
 
 export interface OpenCodeSourceOptions {
@@ -202,6 +202,18 @@ export class OpenCodeSource implements AgentSource {
   /** O cliente já resolvido (o histórico usa as mesmas rotas); undefined antes do boot ou sem serviço. */
   api(): OpenCodeClientLike | undefined {
     return this.client;
+  }
+
+  /**
+   * Manda um prompt à sessão do OpenCode (POST /api/session/{id}/prompt), na fila dela: é o caminho das mensagens
+   * digitadas no escritório. Lança se o serviço não estiver resolvido ou recusar; o chamador vira "failed" com o
+   * motivo. `delivery: 'queue'` espera o turno atual, como o plugin do Claude Code faz.
+   */
+  async promptSession(sessionId: string, text: string): Promise<void> {
+    const client = this.client;
+    if (!client) throw new Error(tr('o serviço do OpenCode não está disponível'));
+    if (!isOpenCodeSessionId(sessionId)) throw new Error(tr('sessão do OpenCode inválida'));
+    await client.post(`/api/session/${encodeURIComponent(sessionId)}/prompt`, { text, delivery: 'queue' });
   }
 
   terminalParser(): undefined {

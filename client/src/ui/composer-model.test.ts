@@ -10,6 +10,8 @@ import {
   enterSends,
   isSettled,
   messageText,
+  OPENCODE_HINT,
+  OPENCODE_TIMEOUT_ERROR,
   PLUGIN_HINT,
   pollDelay,
   sendStatusText,
@@ -49,7 +51,7 @@ describe('caixa de mensagem (peças puras)', () => {
     for (const status of ['working', 'waiting', 'shell'] as const) expect(composerMode(agent({ status }), ON).kind).toBe('ready');
     // Recurso ligado, mas a sessão sem o plugin: a dica de instalação.
     expect(composerMode(agent({ canMessage: undefined }), ON)).toEqual({ kind: 'hint', text: PLUGIN_HINT });
-    expect(PLUGIN_HINT).toBe('Para mandar mensagens daqui: npm run mod:install (plugin habblaud-mensagens)');
+    expect(PLUGIN_HINT).toBe('Para mandar mensagens daqui: npm run mod:install e a sessão do Claude Code aberta num terminal (o plugin carrega ao abrir)');
   });
 
   it('composerMode: quando não dá, diz por quê (a gaveta esconde, o terminal mostra o motivo)', () => {
@@ -121,6 +123,19 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(composerTip()).toBe('Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.');
     expect(timeoutError('codex')).toBe(CODEX_TIMEOUT_ERROR);
     expect(timeoutError()).toBe(TIMEOUT_ERROR);
+  });
+
+  it('OpenCode: principal com o serviço no ar; sem ele, a dica do serviço local; fila e prazo falam do OpenCode', () => {
+    const opencode = (over: Partial<AgentInfo> = {}) => agent({ provider: 'opencode', ...over });
+    expect(composerMode(opencode(), ON)).toEqual({ kind: 'ready' });
+    expect(composerMode(opencode({ canMessage: undefined }), ON)).toEqual({ kind: 'hint', text: OPENCODE_HINT });
+    expect(composerMode(opencode(), { ...ON, enabled: false })).toEqual({ kind: 'off', text: 'Para responder, use o terminal do OpenCode' });
+    expect(composerMode(opencode({ kind: 'sub', parentId: 'acc:1' }), ON).kind).toBe('off');
+    expect(sendStatusText({ phase: 'queued', at: 0 }, 0, 'opencode')).toBe('Na fila: entregando ao OpenCode…');
+    expect(sendStatusText({ phase: 'delivered', at: 0 }, 1_000, 'opencode')).toBe('Entregue ✓ na fila do OpenCode: entra quando ele terminar o que está fazendo');
+    expect(sendStatusText({ phase: 'delivered', at: 0 }, DELIVERED_SHOW_MS, 'opencode')).toBe('');
+    expect(composerTip('opencode')).toMatch(/^Entra na fila da sessão do OpenCode/);
+    expect(timeoutError('opencode')).toBe(OPENCODE_TIMEOUT_ERROR);
   });
 
   it('consulta da entrega: rápida no começo, mais espaçada depois', () => {

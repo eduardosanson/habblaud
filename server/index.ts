@@ -310,6 +310,12 @@ const messages = config.messages
         run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
         homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
       },
+      opencode: opencode
+        ? {
+            prompt: (sessionId, text) => opencode.promptSession(sessionId, text),
+            available: () => !!opencode.api(),
+          }
+        : undefined,
     })
   : undefined;
 late.messages = messages;

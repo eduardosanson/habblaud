@@ -55,6 +55,10 @@ class FakeClient implements OpenCodeClientLike {
   queued: OpenCodeEvent[] = [];
   /** Sessões devolvidas por GET /api/session/:id (para eventos de sessão desconhecida). */
   byId = new Map<string, unknown>();
+  /** POSTs recebidos (prompt). */
+  posted: Array<{ path: string; body: unknown }> = [];
+  /** Erro a devolver no próximo POST (teste de recusa do serviço). */
+  postError?: unknown;
 
   async get<T>(path: string): Promise<T> {
     if (path.startsWith('/api/session/active')) return this.active as T;
@@ -65,8 +69,10 @@ class FakeClient implements OpenCodeClientLike {
     throw new Error(`GET inesperado: ${path}`);
   }
 
-  async post<T>(path: string): Promise<T> {
-    throw new Error(`POST inesperado: ${path}`);
+  async post<T>(path: string, body: unknown): Promise<T> {
+    if (this.postError) throw this.postError;
+    this.posted.push({ path, body });
+    return {} as T;
   }
 
   async *events(): AsyncGenerator<OpenCodeEvent> {
@@ -201,6 +207,19 @@ describe('fonte do OpenCode: boot', () => {
     expect(sub).toBeDefined();
     expect(main).not.toBe(sub);
     expect(ctx.source.messageStream('opencode:ses_que_nao_esta')).toBeUndefined();
+  });
+
+  it('promptSession manda POST .../prompt com delivery queue; sem serviço ou id inválido lança', async () => {
+    const ctx = setup();
+    const bare = new OpenCodeSource({ accounts: ctx.accounts, office: ctx.office, now: ctx.now, serviceFile: '/x/service.json' });
+    await expect(bare.promptSession('ses_1', 'oi')).rejects.toThrow(/não está disponível/);
+    ctx.client.sessions = [SESSION];
+    await ctx.source.boot();
+    await ctx.source.promptSession('ses_1', 'roda os testes');
+    expect(ctx.client.posted).toEqual([{ path: '/api/session/ses_1/prompt', body: { text: 'roda os testes', delivery: 'queue' } }]);
+    await expect(ctx.source.promptSession('../x', 'oi')).rejects.toThrow(/inválida/);
+    ctx.client.postError = Object.assign(new Error('OpenCode respondeu 404'), { status: 404 });
+    await expect(ctx.source.promptSession('ses_1', 'oi')).rejects.toThrow(/404/);
   });
 });
 
