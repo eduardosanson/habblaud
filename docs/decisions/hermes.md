@@ -53,3 +53,4 @@
 
 - Decisão: o plugin manda `session_heartbeat` a cada 30 s para as sessões vivas e o servidor recria o agente se ele não existe mais — reiniciar o Habblaud não deixa mais o Hermes invisível até o próximo turno.
 - Decisão: o heartbeat de um agente que já está no escritório só renova a presença; não sobrescreve `waiting`/`working` reais.
+- Decisão: no gateway multi-perfil, só o plugin do perfil dono da sessão publica (`HERMES_SESSION_PROFILE`); o servidor também junta a mesma sessão vista em dois perfis num agente só.

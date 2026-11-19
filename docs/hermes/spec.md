@@ -100,6 +100,8 @@ mensagens e `register_approval_transport` para responder aprovações.
   é local e não expõe conversa.
 - RF30: o plugin manda `session_heartbeat` a cada 30 s para cada sessão viva; se o Habblaud reiniciar, o
   `HermesSource` recria o agente no status que o plugin lembra, sem esperar um turno novo.
+- RF31: no gateway multi-perfil, o plugin só publica a sessão no perfil dono (`HERMES_SESSION_PROFILE`); o
+  `HermesSource` também junta a mesma sessão vista em perfis diferentes num agente só.
 
 ### Requisitos não funcionais
 
@@ -125,6 +127,8 @@ mensagens e `register_approval_transport` para responder aprovações.
 - CA19: nada de senha/credencial no snapshot, log ou UI; o World continua sem Hermes.
 - CA20: depois de reiniciar o Habblaud, uma sessão viva volta ao escritório em até 30 s pelo heartbeat, mesmo sem
   prompt novo; um agente que já está aqui não tem o status alterado pelo heartbeat.
+- CA21: a mesma sessão publicada por dois perfis vira um agente só; os eventos do perfil duplicado atualizam esse
+  agente.
 
 ### Definition of Done (Fase B)
 

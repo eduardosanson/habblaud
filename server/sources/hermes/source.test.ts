@@ -79,6 +79,17 @@ describe('HermesSource: sessão principal', () => {
     expect(agent(office, MAIN)).toMatchObject({ status: 'working', roomId: '/p/loja', kind: 'main' });
   });
 
+  it('a mesma sessão publicada por dois perfis vira um agente só', () => {
+    const { office, source } = setup();
+    source.applyEvent(ev('session_open', { session_id: 's1', project: '/p/loja' }, 'spec-writer', `${HOME}/profiles/spec-writer`));
+    source.applyEvent(ev('session_open', { session_id: 's1', project: '/p/loja' }, 'default', HOME));
+    expect(snap(office).agents.filter((a) => a.provider === 'hermes')).toHaveLength(1);
+    expect(agent(office, 'hermes:spec-writer:s1')?.account).toBe('spec-writer');
+    // Eventos do perfil duplicado continuam atualizando o mesmo agente.
+    source.applyEvent(ev('session_busy', { session_id: 's1' }, 'default', HOME));
+    expect(agent(office, 'hermes:spec-writer:s1')?.status).toBe('working');
+  });
+
   it('terminal: history, prompt, resposta, ferramenta e resultado; stream entrega init e append', async () => {
     const { source } = setup();
     source.applyEvent(ev('session_open', { session_id: 's1', platform: 'cli', project: '/p/loja' }));

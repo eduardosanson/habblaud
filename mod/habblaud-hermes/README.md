@@ -19,7 +19,7 @@ escritório. Nunca bloqueia o agente.
 - **Contas e salas:** cada perfil do Hermes (`~/.hermes/profiles/<nome>` ou `~/.hermes`) vira uma conta com o nome
   “Hermes” + as iniciais do perfil; a sala é o `terminal.cwd` do perfil (ou `HABBLAUD_HERMES_PROJECT`).
 - **Presença:** um heartbeat a cada 30 s mantém a sessão viva no escritório e a traz de volta sozinha depois de
-  reiniciar o Habblaud.
+  reiniciar o Habblaud. No gateway multi-perfil, só o plugin do perfil dono da sessão publica.
 
 Sessões encerradas/antigas ficam fora: o plugin só observa sessões vivas.
 

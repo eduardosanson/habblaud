@@ -137,6 +137,8 @@ export class HermesSource implements AgentSource {
   private readonly trackers = new Map<string, Tracker>();
   /** Sessão do perfil -> agente principal (ou subagente). */
   private readonly bySession = new Map<string, string>();
+  /** Sessão (sem o perfil) -> agente: o gateway pode publicar a mesma sessão em mais de um plugin de perfil. */
+  private readonly bySessionId = new Map<string, string>();
   private readonly seenEvents = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private seenAny = false;
@@ -328,7 +330,7 @@ export class HermesSource implements AgentSource {
   }
 
   private trackerFor(profile: Profile, sessionId: string): Tracker | undefined {
-    const key = this.bySession.get(this.sessionKey(profile, sessionId));
+    const key = this.bySession.get(this.sessionKey(profile, sessionId)) ?? this.bySessionId.get(sessionId);
     return key ? this.trackers.get(key) : undefined;
   }
 
@@ -385,6 +387,7 @@ export class HermesSource implements AgentSource {
     if (model) t.model = model;
     this.trackers.set(key, t);
     this.bySession.set(this.sessionKey(profile, sessionId), key);
+    this.bySessionId.set(sessionId, key);
     this.applySummary(t);
     return true;
   }
@@ -407,6 +410,7 @@ export class HermesSource implements AgentSource {
     t.inOffice = false;
     this.trackers.delete(t.key);
     for (const [sid, key] of this.bySession) if (key === t.key) this.bySession.delete(sid);
+    if (this.bySessionId.get(t.sessionId) === t.key) this.bySessionId.delete(t.sessionId);
   }
 
   private keyFor(profile: Profile, sessionId: string): string {

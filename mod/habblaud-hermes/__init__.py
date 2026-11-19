@@ -61,6 +61,8 @@ _last_pid = os.getpid()
 _ctx = None
 _contexts: list[tuple[Any, str, str]] = []
 _plugin_profile = "default"
+_plugin_home = ""
+_registered = False
 _poller_started = False
 _poller_lock = threading.Lock()
 _history_sent: set[str] = set()
@@ -113,6 +115,30 @@ def _url() -> str:
 def _base() -> str:
     parts = urllib.parse.urlsplit(_url())
     return f"{parts.scheme}://{parts.netloc}"
+
+
+def _session_profile() -> str:
+    """Perfil dono da sessão no gateway (o mesmo hook chega a mais de um plugin em perfis diferentes)."""
+    try:
+        from gateway.session_context import get_session_env
+
+        return str(get_session_env("HERMES_SESSION_PROFILE", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def _owner_profile() -> str:
+    return _plugin_profile if _registered else _profile()
+
+
+def _owner_home() -> str:
+    return _plugin_home if _registered and _plugin_home else _home()
+
+
+def _session_owner_allows() -> bool:
+    """Sem contexto de sessão (CLI/teste), vale o plugin; no gateway, só o plugin do perfil dono publica."""
+    owner = _session_profile()
+    return not owner or owner == _owner_profile()
 
 
 def _http_json(path: str, body: Optional[dict[str, Any]] = None, *, timeout: float = 3.0) -> Optional[dict[str, Any]]:
@@ -335,6 +361,8 @@ def _publish(event: Dict[str, Any]) -> None:
         return
     if not isinstance(event, dict) or not event.get("type"):
         return
+    if not _session_owner_allows():
+        return
     if os.getpid() != _last_pid:
         _after_fork()
     with _event_lock:
@@ -342,7 +370,7 @@ def _publish(event: Dict[str, Any]) -> None:
         seq = _event_seq
     event.setdefault("ts", time.time())
     event.setdefault("event_id", f"{os.getpid()}-{time.time_ns()}-{seq}")
-    body = {"profile": _profile(), "home": _home(), "event": event}
+    body = {"profile": _owner_profile(), "home": _owner_home(), "event": event}
     _start_worker()
     try:
         _queue.put_nowait(body)
@@ -748,11 +776,13 @@ def _start_poller() -> None:
 
 def register(ctx: Any) -> None:
     """Registra os hooks; nomes opcionais só entram quando o Hermes desta versão os conhece."""
-    global _ctx, _plugin_profile
+    global _ctx, _plugin_profile, _plugin_home, _registered
     _ctx = ctx
     _plugin_profile = _profile()
+    _plugin_home = _home()
+    _registered = True
     if not any(item[0] is ctx for item in _contexts):
-        _contexts.append((ctx, _plugin_profile, _home()))
+        _contexts.append((ctx, _plugin_profile, _plugin_home))
     core = (
         ("on_session_start", _on_session_start),
         ("on_session_end", _on_session_end),

@@ -266,3 +266,17 @@ def test_heartbeat_remembers_live_sessions_and_forgets_ended_ones(tmp_path, monk
     plugin._on_session_end(session_id="s1", completed=True)
     plugin._heartbeat_once(now=62)
     assert len([e for e in events if e["type"] == "session_heartbeat"]) == 1
+
+
+def test_gateway_session_profile_only_lets_the_owner_plugin_publish(tmp_path, monkeypatch):
+    plugin = load(tmp_path)
+    plugin._registered = True
+    plugin._plugin_profile = "developer"
+    plugin._plugin_home = "/x/developer"
+    monkeypatch.setattr(plugin, "_session_profile", lambda: "tester")
+    assert plugin._session_owner_allows() is False
+    monkeypatch.setattr(plugin, "_session_profile", lambda: "developer")
+    assert plugin._session_owner_allows() is True
+    # CLI/teste sem contexto de sessão: o plugin publica normalmente.
+    monkeypatch.setattr(plugin, "_session_profile", lambda: "")
+    assert plugin._session_owner_allows() is True
