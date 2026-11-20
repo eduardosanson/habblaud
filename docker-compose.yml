@@ -51,6 +51,12 @@ services:
       HABBLAUD_WORLD: ${HABBLAUD_WORLD:-}
       HABBLAUD_WORLD_URL: ${HABBLAUD_WORLD_URL:-}
       HABBLAUD_WORLD_DEV: ${HABBLAUD_WORLD_DEV:-}
+      # Roadmap (/roadmap): leitura do Hermes Pipeline no host com o token do Habblaud. No Docker, use
+      # HABBLAUD_ROADMAP_URL=http://host.docker.internal:49500 (extra_hosts abaixo já aponta o nome).
+      HABBLAUD_ROADMAP: ${HABBLAUD_ROADMAP:-}
+      HABBLAUD_ROADMAP_URL: ${HABBLAUD_ROADMAP_URL:-}
+      HABBLAUD_ROADMAP_TOKEN: ${HABBLAUD_ROADMAP_TOKEN:-}
+      HABBLAUD_ROADMAP_IDS: ${HABBLAUD_ROADMAP_IDS:-}
     # O host visto de dentro do container (servidor do Habblaud World local em teste: HABBLAUD_WORLD_URL=
     # http://host.docker.internal:<porta> com HABBLAUD_WORLD_DEV=1). No Docker Desktop o nome já existe; no Linux,
     # host-gateway o aponta para o host. Inofensivo sem o World.

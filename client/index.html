@@ -37,11 +37,17 @@
       #world[hidden], #city[hidden], #visit[hidden] { display: none; }
       #ui { position: fixed; inset: 0; pointer-events: none; }
       #ui > * { pointer-events: auto; }
+      /* A rota /roadmap usa o mesmo index.html, mas troca o escritório pela página de roadmap. */
+      #rp-app { display: none; }
+      body.is-roadmap { overflow: auto; }
+      body.is-roadmap #world, body.is-roadmap #ui { display: none; }
+      body.is-roadmap #rp-app { display: block; min-height: 100vh; }
     </style>
   </head>
   <body>
     <canvas id="world"></canvas>
     <div id="ui"></div>
+    <div id="rp-app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

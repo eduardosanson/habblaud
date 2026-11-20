@@ -9,6 +9,7 @@ import { parseAllowedHosts } from './http/guard';
 import { parseRemoteConfig, type RemoteConfig } from './http/remote';
 import { parseGithubRepo } from './updates/checker';
 import { tr } from '../shared/i18n';
+import { parseRoadmapConfig, type RoadmapConfig } from './roadmap/config';
 
 export interface ServerConfig {
   port: number;
@@ -68,6 +69,8 @@ export interface ServerConfig {
   remoteWarning?: string;
   /** Habblaud World (server/world/): conta, personagem e, nas próximas fases, o prédio no mundo. */
   world: WorldConfig;
+  /** Roadmap (`/roadmap`): leitura do Hermes Pipeline local e conversa com o agente. */
+  roadmap: RoadmapConfig;
 }
 
 export interface WorldConfig {
@@ -276,5 +279,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
     remote: remote.config,
     remoteWarning: remote.warning,
     world: parseWorldConfig(env, argv),
+    roadmap: parseRoadmapConfig(env),
   };
 }

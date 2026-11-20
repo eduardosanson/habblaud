@@ -2,9 +2,8 @@ import { defineConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
-
 // Cliente do Habblaud. Em `npm run dev` o servidor usa este config em middleware mode;
-// `npm run dev:client` sobe só o Vite (use ?mock=1 para dados simulados no navegador).
+// `npm run dev:client` sobe só o Vite; o roadmap usa `/api/roadmap` no servidor do Habblaud.
 export default defineConfig({
   root: r('./client'),
   // No navegador vai só o dicionário do idioma ativo (client/src/main.ts), não os três: ver shared/locales/all.ts.

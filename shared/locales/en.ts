@@ -1,7 +1,10 @@
 // Tradução para o inglês. Chave = texto original em PT (exatamente como passado a tr()); valor = inglês.
 // As lacunas {0}, {1}... (e as nomeadas, como {sala}) precisam aparecer na tradução, em qualquer ordem.
 // Chave ausente = o texto fica em PT. `npm run i18n:check` lista os textos sem tradução e as chaves que sobraram.
+import { ROADMAP_EN } from './roadmap';
+
 export const EN: Readonly<Record<string, string>> = {
+  ...ROADMAP_EN,
   // client/src/main.ts
   "Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo.": "Pixel-art virtual office that shows, in real time, what your Claude Code agents are doing.",
 

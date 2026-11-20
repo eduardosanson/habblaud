@@ -57,6 +57,7 @@ import { DeliveryIndex } from './deliveries/deliveries';
 import { FileFetcher } from './deliveries/fetcher';
 import { WorldClient } from './world/client';
 import { createWorldRoutes } from './world/http';
+import { createRoadmapHandler } from './roadmap/proxy';
 import { WorldService } from './world/service';
 import { WorldSettingsStore } from './world/settings';
 import { OwnerSocial } from './world/social';
@@ -385,6 +386,11 @@ const ticker = setInterval(() => {
   }
 }, 250);
 
+const roadmap = createRoadmapHandler({
+  config: config.roadmap,
+  isLocal: (req) => !isRemoteRequest(req) && isLoopbackHost(req.headers.host),
+});
+
 const api = createApiHandler({
   renameRoom: (id, name) => {
     const path = office.roomPath(id);
@@ -424,6 +430,8 @@ const api = createApiHandler({
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
   world: world ? createWorldRoutes(world, worldViewer, worldSocial) : undefined,
+  roadmap,
+  roadmapAvailable: config.roadmap.enabled,
 });
 
 const server = http.createServer();
@@ -579,6 +587,11 @@ server.listen(config.port, config.host, () => {
             world.state(),
             config.terminal ? '' : tr(' (só leitura: a trava do terminal está desligada)'),
           ]),
+  );
+  log.info(
+    config.roadmap.enabled
+      ? tr('   Roadmap: ligado em {0} (Hermes Pipeline).', [config.roadmap.url ?? ''])
+      : tr('   Roadmap: desligado ({0}).', [config.roadmap.warning ?? tr('HABBLAUD_ROADMAP=0')]),
   );
   log.info(
     updates.enabled

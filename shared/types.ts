@@ -399,6 +399,11 @@ export interface AccessInfo {
    * com Host local. Ausente em servidores antigos.
    */
   world?: boolean;
+  /**
+   * Pode abrir o roadmap (`/roadmap`): recurso ligado (HABBLAUD_ROADMAP + token), porta local com Host local.
+   * Ausente em servidores antigos.
+   */
+  roadmap?: boolean;
 }
 
 export interface FeedItem {

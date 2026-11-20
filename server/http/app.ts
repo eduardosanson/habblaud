@@ -98,6 +98,12 @@ export interface ApiDeps {
    * local com Host local: pela porta do celular, nem com login (403 `local_only`).
    */
   world?: (req: IncomingMessage, res: ServerResponse, url: URL) => void;
+  /**
+   * Rotas do roadmap (/api/roadmap/*, server/roadmap/proxy.ts): proxy do Hermes Pipeline com o token no servidor. O
+   * handler responde o status mesmo desligado; `roadmapAvailable` diz se a página pode abrir o recurso.
+   */
+  roadmap?: (req: IncomingMessage, res: ServerResponse, url: URL) => void;
+  roadmapAvailable?: boolean;
 }
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
@@ -354,6 +360,14 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       } else deps.world(req, res, url);
       return true;
     }
+    if (path === '/api/roadmap' || path.startsWith('/api/roadmap/')) {
+      // O handler do roadmap confere a porta local e devolve o status mesmo desligado.
+      if (!deps.roadmap) {
+        req.resume();
+        sendJson(res, 404, { error: tr('rota desconhecida') });
+      } else deps.roadmap(req, res, url);
+      return true;
+    }
     if (path === '/api/stream') {
       if (method !== 'GET') methodNotAllowed(res, 'GET');
       else hub.attach(req, res);
@@ -404,6 +418,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           terminal: !!terminals && trusted(req, 'terminal'),
           spawn: !!deps.spawn && trusted(req, 'spawn'),
           world: !!deps.world && !!deps.terminal && !remote && isLoopbackHost(req.headers.host),
+          roadmap: !!deps.roadmapAvailable && !remote && isLoopbackHost(req.headers.host),
         };
         sendJson(res, 200, access);
       }

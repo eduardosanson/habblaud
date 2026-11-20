@@ -46,6 +46,7 @@ export class TopBar implements UiComponent {
   private sidebarBtn: HTMLButtonElement;
   private feedBtn: HTMLButtonElement;
   private timelapseBtn: HTMLButtonElement;
+  private roadmapBtn: HTMLButtonElement;
   readonly settingsBtn: HTMLButtonElement;
   /** Abre a janela do Habblaud World (ao lado de Configurações); a janela decide quando ele aparece. */
   readonly worldBtn: HTMLButtonElement;
@@ -105,6 +106,8 @@ export class TopBar implements UiComponent {
     this.sidebarBtn = iconButton(ICONS.sidebar, tr('Painel lateral ( [ )'), () => ctx.togglePanel('sidebar'), 'ui-btn-sidebar');
     this.feedBtn = iconButton(ICONS.feed, tr('Feed de atividade ( ] )'), () => ctx.togglePanel('feed'), 'ui-btn-feed');
     this.timelapseBtn = iconButton(TIMELAPSE_ICONS.timelapse, tr('Timelapse: reproduzir o dia (L)'), () => ctx.toggleTimelapse(), 'ui-btn-timelapse');
+    // Roadmap: página separada na mesma origem, alimentada pelo Hermes Pipeline com token no servidor.
+    this.roadmapBtn = iconButton(ICONS.roadmap, tr('Roadmap: abrir a leitura do Hermes Pipeline'), () => location.assign('/roadmap'), 'ui-btn-roadmap');
     // Habblaud World: escondido até a janela dele (ui/world/world-dialog.ts) dizer que há servidor do mundo configurado.
     this.worldBtn = iconButton(ICONS.city, tr('Habblaud World'), () => ctx.toggleWorld(), 'ui-btn-world');
     this.worldBtn.setAttribute('aria-haspopup', 'dialog');
@@ -132,6 +135,7 @@ export class TopBar implements UiComponent {
       this.timelapseBtn,
       this.feedBtn,
       this.worldBtn,
+      this.roadmapBtn,
       this.settingsBtn,
       iconButton(ICONS.help, tr('Ajuda (?)'), () => ctx.openHelp()),
     );
@@ -220,6 +224,7 @@ export class TopBar implements UiComponent {
     this.usage.render();
     this.version.render();
     setHidden(this.spawnBtn, !access().spawn || store.mock || store.replaying);
+    setHidden(this.roadmapBtn, !access().roadmap);
 
     this.sidebarBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('sidebar')));
     this.feedBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('feed')));

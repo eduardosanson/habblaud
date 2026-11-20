@@ -1,7 +1,10 @@
 // Tradução para o francês. Chave = texto original em PT (exatamente como passado a tr()); valor = francês.
 // As lacunas {0}, {1}... (e as nomeadas, como {sala}) precisam aparecer na tradução, em qualquer ordem.
 // Chave ausente = o texto fica em PT. `npm run i18n:check` lista os textos sem tradução e as chaves que sobraram.
+import { ROADMAP_FR } from './roadmap';
+
 export const FR: Readonly<Record<string, string>> = {
+  ...ROADMAP_FR,
   // client/src/main.ts
   "Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo.": "Bureau virtuel en pixel art qui montre, en temps réel, ce que font vos agents Claude Code.",
 
