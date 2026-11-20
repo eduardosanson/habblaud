@@ -957,7 +957,7 @@
 /* Uso por conta */
 .ui-usage {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
   margin-left: auto;
   min-width: 0;
@@ -11298,4 +11298,21 @@ html.is-replay #world {
 
 .ui-world-chip__visitors[hidden] {
   display: none;
+}
+
+/* Cartão com a janela mensal (OpenCode Go): uma linha a mais na barra superior. */
+@media (min-width: 601px) {
+  .ui-root.has-monthly:not(.has-usage-row) {
+    --top-h: 79px;
+  }
+
+  .ui-root.has-monthly.has-usage-row {
+    --top-h: 139px;
+  }
+}
+
+@media (max-width: 600px) {
+  .ui-root.has-monthly {
+    --top-h: 123px;
+  }
 }

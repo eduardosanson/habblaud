@@ -234,7 +234,9 @@ export class CodexSource implements AgentSource, CodexLive {
     try {
       for (const acc of this.accs) acc.index.scanAll();
       this.poll(true);
-      for (const acc of this.accs) if (!acc.usage) this.seedUsage(acc);
+      // Sempre, não só quando nenhuma sessão aberta trouxe números: uma sessão aberta e parada pode ter a última
+      // leitura antiga, enquanto outro rollout (já fechado) leu números mais novos. O pushUsage mantém o mais novo.
+      for (const acc of this.accs) this.seedUsage(acc);
     } finally {
       this.opts.office.endBoot();
     }
@@ -741,10 +743,11 @@ export class CodexSource implements AgentSource, CodexLive {
   }
 
   /**
-   * Conta sem sessão aberta ao subir: o uso do rollout mais recente que tenha números (fica "desatualizado" com a
-   * idade: os números do Codex só se renovam com alguma sessão rodando). Por mtime em TODAS as pastas de data (uma
-   * sessão retomada continua no arquivo da pasta antiga), tentando os SEED_USAGE_FILES mais recentes: o último pode não
-   * ter `token_count` nenhum (sessão sem resposta, ou arquivada logo).
+   * Completa o uso com o rollout mais recente que tenha números (fica "desatualizado" com a idade: os números do Codex
+   * só se renovam com alguma sessão rodando). Roda também quando há sessão aberta: a leitura dela pode ser antiga
+   * (sessão parada), e outro rollout pode ter lido números mais novos; `pushUsage` mantém o de maior `fetchedAt`.
+   * Por mtime em TODAS as pastas de data (uma sessão retomada continua no arquivo da pasta antiga), tentando os
+   * SEED_USAGE_FILES mais recentes: o último pode não ter `token_count` nenhum (sessão sem resposta, ou arquivada logo).
    */
   private seedUsage(acc: CodexAccount): void {
     const files: Array<{ path: string; mtimeMs: number }> = [];

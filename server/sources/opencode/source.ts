@@ -58,6 +58,8 @@ export interface OpenCodeSourceOptions {
   recentMs?: number;
   /** Releitura de ativas/uso e varredura de presença. */
   pollMs?: number;
+  /** Releitura só do uso do plano (o cartão acompanha o OpenCode de perto; padrão 15 s). */
+  usageMs?: number;
   /** Espera antes de tentar o SSE de novo. */
   reconnectMs?: number;
 }
@@ -105,6 +107,7 @@ export class OpenCodeSource implements AgentSource {
   private readonly now: () => number;
   private readonly recentMs: number;
   private readonly pollMs: number;
+  private readonly usageMs: number;
   private readonly reconnectMs: number;
   private readonly serviceFile: string;
   private readonly accountDir: string;
@@ -113,6 +116,7 @@ export class OpenCodeSource implements AgentSource {
   private readonly active = new Set<string>();
   private client?: OpenCodeClientLike;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private usageTimer: ReturnType<typeof setInterval> | null = null;
   private abort?: AbortController;
   private stopped = false;
   private error?: string;
@@ -121,6 +125,7 @@ export class OpenCodeSource implements AgentSource {
     this.now = opts.now ?? Date.now;
     this.recentMs = opts.recentMs ?? 120 * 60_000;
     this.pollMs = opts.pollMs ?? 60_000;
+    this.usageMs = opts.usageMs ?? 15_000;
     this.reconnectMs = opts.reconnectMs ?? 2_000;
     this.serviceFile = opts.serviceFile ?? openCodeServiceFile(opts.env ?? process.env, opts.home);
     this.accountDir = dirname(this.serviceFile);
@@ -152,13 +157,19 @@ export class OpenCodeSource implements AgentSource {
       this.sweep();
     }, this.pollMs);
     this.timer.unref?.();
+    this.usageTimer = setInterval(() => {
+      void this.refreshUsage().catch((err) => this.warn('usage', err));
+    }, this.usageMs);
+    this.usageTimer.unref?.();
     void this.streamLoop();
   }
 
   stop(): void {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.usageTimer) clearInterval(this.usageTimer);
     this.timer = null;
+    this.usageTimer = null;
     this.abort?.abort();
     this.abort = undefined;
   }
@@ -250,6 +261,14 @@ export class OpenCodeSource implements AgentSource {
     this.applySessions(Array.isArray(sessionsRaw) ? sessionsRaw : []);
     if (usageRaw !== undefined) this.applyUsage(usageRaw);
     this.error = undefined;
+  }
+
+  /** Só o uso do plano: o cartão não espera a releitura completa (sessões/ativas) para acompanhar o OpenCode. */
+  async refreshUsage(): Promise<void> {
+    const client = this.client;
+    if (!client) return;
+    const usageRaw = await client.get<unknown>('/api/experimental/usage/limits').catch(() => undefined);
+    if (usageRaw !== undefined) this.applyUsage(usageRaw);
   }
 
   /** Tira do escritório quem não está ativo e não foi visto dentro da janela. */

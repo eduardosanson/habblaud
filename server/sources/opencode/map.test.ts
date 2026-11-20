@@ -61,7 +61,7 @@ describe('parseOpenCodeSession', () => {
 });
 
 describe('parseOpenCodeUsage', () => {
-  it('mapeia rolling para 5 h e weekly para a semana', () => {
+  it('mapeia rolling para 5 h, weekly para a semana e monthly para o mês', () => {
     const u = parseOpenCodeUsage(
       {
         workspace: { id: 'w', name: 'Default' },
@@ -79,6 +79,7 @@ describe('parseOpenCodeUsage', () => {
       fetchedAt: 1_000,
       fiveHour: { utilization: 5, resetsAt: 11_000 },
       sevenDay: { utilization: 39, resetsAt: 22_000 },
+      monthly: { utilization: 82, resetsAt: 33_000 },
     });
   });
 

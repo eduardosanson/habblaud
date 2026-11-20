@@ -11,7 +11,7 @@ import type { AccountInfo } from '../../../shared/types';
 import { filterAccounts, HERMES_GROUP } from './account-filter';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
-import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
+import { FIVE_HOURS_MS, MONTH_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
 import { isCodex, isHermes, isOpenCode } from './provider';
 import { usageRowFits } from './usage-row';
@@ -72,6 +72,7 @@ interface CardRefs {
   meters: HTMLElement;
   five: Meter;
   week: Meter;
+  month: Meter;
   msg: HTMLElement;
   msgLong: HTMLElement;
   msgShort: HTMLElement;
@@ -157,7 +158,7 @@ export function createUsageSetup(): HTMLElement {
 export type CardState = 'ok' | 'stale' | 'empty' | 'noquota';
 
 function hasWindows(a: Pick<AccountInfo, 'usage'>): boolean {
-  return !!a.usage && !!(a.usage.fiveHour || a.usage.sevenDay);
+  return !!a.usage && !!(a.usage.fiveHour || a.usage.sevenDay || a.usage.monthly);
 }
 
 /** Estado efetivo do cartão. */
@@ -211,7 +212,7 @@ export function openCodeUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' |
   const state = cardState(a);
   if (state === 'empty') return tr('Não há o que instalar: o OpenCode informa os limites do plano no próprio serviço local.');
   const age = a.usage ? relativeTime(a.usage.fetchedAt, now) : '';
-  return tr('O OpenCode informa os limites do plano aberto (5 h e semana): estes números são da última leitura ({0}).', [age]);
+  return tr('O OpenCode informa os limites do plano aberto (5 h, semana e mês): estes números são da última leitura ({0}).', [age]);
 }
 
 /** Explicação do cartão de uma conta do Hermes (dica); '' nas outras. O Hermes não informa limites de plano. */
@@ -242,6 +243,8 @@ export class UsageCards {
     const shown = filterAccounts(accounts);
     this.list.sync(shown);
     this.el.classList.toggle('is-empty', shown.length === 0);
+    // O cartão com o limite mensal ganha uma linha a mais; a barra cresce junto (styles.css).
+    this.ctx.root.classList.toggle('has-monthly', shown.some((a) => !!a.usage?.monthly));
     setStyleVar(this.el, '--count', String(shown.length));
     // Medir força o layout da página, e o render roda a cada quadro no replay: só quando as contas mudam (a largura da
     // janela fica com o ResizeObserver do construtor).
@@ -298,7 +301,9 @@ export class UsageCards {
     const state = h('span', { class: 'ui-usage-card__state' }, stateIcon, stateText);
     const five = createMeter('5h', '5h', tr('Sessão de 5 horas'));
     const week = createMeter(tr('Semana'), tr('Sem.'), tr('Limite semanal'));
-    const meters = h('div', { class: 'ui-usage-card__meters' }, five.el, week.el);
+    const month = createMeter(tr('Mês'), tr('Mês'), tr('Limite mensal'));
+    month.el.hidden = true;
+    const meters = h('div', { class: 'ui-usage-card__meters' }, five.el, week.el, month.el);
     const msgLong = h('span', { class: 'ui-usage-card__msg-long', text: tr('sem dados de uso') });
     const msgShort = h('span', { class: 'ui-usage-card__msg-short', text: tr('sem dados'), attrs: { 'aria-hidden': 'true' } });
     const howLong = h('span', { class: 'ui-usage-card__how-long', text: tr('Como ativar') });
@@ -339,6 +344,7 @@ export class UsageCards {
       meters,
       five,
       week,
+      month,
       msg,
       msgLong,
       msgShort,
@@ -373,11 +379,14 @@ export class UsageCards {
     setVariant(card, 'is-', state);
     const five = usage ? usageWindowView(usage.fiveHour, usage.fetchedAt, now, FIVE_HOURS_MS) : null;
     const week = usage ? usageWindowView(usage.sevenDay, usage.fetchedAt, now, WEEK_MS) : null;
+    const month = usage ? usageWindowView(usage.monthly, usage.fetchedAt, now, MONTH_MS) : null;
     const showMeters = hasWindows(a);
     setHidden(r.meters, !showMeters);
+    setHidden(r.month.el, !usage?.monthly);
     if (usage && showMeters) {
       updateMeter(r.five, five, tr('Sessão de 5 horas'));
       updateMeter(r.week, week, tr('Semana'));
+      if (usage.monthly) updateMeter(r.month, month, tr('Mês'));
     }
     r.meters.classList.toggle('is-dim', state !== 'ok');
 
@@ -421,10 +430,18 @@ export class UsageCards {
           ? tr('Como o uso do OpenCode chega ao Habblaud (abre a ajuda em “Contas e uso”)')
           : tr('Como mostrar o uso desta conta (abre a ajuda em “Contas e uso”)'),
     );
-    this.updateTip(r, a, state, five, week, now);
+    this.updateTip(r, a, state, five, week, month, now);
   }
 
-  private updateTip(r: CardRefs, a: AccountInfo, state: CardState, five: UsageWindowView | null, week: UsageWindowView | null, now: number): void {
+  private updateTip(
+    r: CardRefs,
+    a: AccountInfo,
+    state: CardState,
+    five: UsageWindowView | null,
+    week: UsageWindowView | null,
+    month: UsageWindowView | null,
+    now: number,
+  ): void {
     const codex = isCodex(a);
     const opencode = isOpenCode(a);
     const hermes = isHermes(a);
@@ -439,9 +456,10 @@ export class UsageCards {
     if (a.id !== HERMES_GROUP) rows.push([tr('Pasta'), a.configDir]);
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
-    if (u && (u.fiveHour || u.sevenDay)) {
+    if (u && (u.fiveHour || u.sevenDay || u.monthly)) {
       rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
       rows.push([tr('Semana'), week?.summary ?? '—']);
+      if (u.monthly) rows.push([tr('Mês'), month?.summary ?? '—']);
       // Opus e Sonnet são janelas do Claude: no Codex/OpenCode/Hermes não existem.
       const opus = toolCard ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
       const sonnet = toolCard ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);

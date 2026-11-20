@@ -109,19 +109,21 @@ function usageWindow(raw: unknown): UsageWindow | undefined {
   return w;
 }
 
-/** `GET /api/experimental/usage/limits` (o data já desembrulhado) -> uso do plano. */
+/** `GET /api/experimental/usage/limits` (o data já desembrulhado) -> uso do plano (5 h, semana e mês). */
 export function parseOpenCodeUsage(raw: unknown, fetchedAt: number): AccountUsage | undefined {
   const j = rec(raw);
   if (!j) return undefined;
   const go = rec(j.go) ?? j;
   const fiveHour = usageWindow(go.rolling);
   const sevenDay = usageWindow(go.weekly);
-  if (!fiveHour && !sevenDay) return undefined;
+  const monthly = usageWindow(go.monthly);
+  if (!fiveHour && !sevenDay && !monthly) return undefined;
   return {
     source: 'opencode',
     fetchedAt,
     ...(fiveHour ? { fiveHour } : {}),
     ...(sevenDay ? { sevenDay } : {}),
+    ...(monthly ? { monthly } : {}),
   };
 }
 

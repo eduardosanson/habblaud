@@ -277,19 +277,21 @@ export interface UsageWindow {
 }
 
 export interface AccountUsage {
-  /** Sessão de 5 horas. */
+  /** Sessão de 5 horas (no OpenCode, a janela `rolling`). */
   fiveHour?: UsageWindow;
   /** Limite semanal (todos os modelos). */
   sevenDay?: UsageWindow;
   sevenDayOpus?: UsageWindow;
   sevenDaySonnet?: UsageWindow;
+  /** Limite mensal (OpenCode Go). */
+  monthly?: UsageWindow;
   /**
    * Origem dos números (todas são arquivos locais gravados pela própria ferramenta):
    * - 'statusline': capturado ao vivo e gravado em ~/.habblaud/usage/<conta>.json pelo mod do Habblaud
    *   (mod/habblaud, recomendado) ou pelo scripts/statusline-tap.mjs (campo rate_limits do statusline);
    * - 'cache': `cachedUsageUtilization` gravado pelo próprio Claude Code (atualiza quando alguém roda /usage);
    * - 'codex': `rate_limits` dos arquivos de sessão do Codex (só se renovam enquanto alguma sessão roda);
-   * - 'opencode': limites do plano do serviço local do OpenCode (`rolling` e `weekly`).
+   * - 'opencode': limites do plano do serviço local do OpenCode (`rolling`, `weekly` e `monthly`).
    */
   source: 'cache' | 'statusline' | 'codex' | 'opencode';
   /** Quem gravou o arquivo ao vivo ('statusline'): o mod do Habblaud no Claude Code ou o tap de statusline. */

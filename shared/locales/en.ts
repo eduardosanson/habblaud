@@ -3288,7 +3288,6 @@ export const EN: Readonly<Record<string, string>> = {
   // OpenCode
   "limites do OpenCode": "OpenCode limits",
   "Não há o que instalar: o OpenCode informa os limites do plano no próprio serviço local.": "Nothing to install: OpenCode reports plan limits from its own local service.",
-  "O OpenCode informa os limites do plano aberto (5 h e semana): estes números são da última leitura ({0}).": "OpenCode reports the open plan limits (5 h and week): these numbers are from the last reading ({0}).",
   "Atualizado {0}: o OpenCode informa os limites do plano aberto.": "Updated {0}: OpenCode reports the open plan limits.",
   "Como o uso do OpenCode chega ao Habblaud (abre a ajuda em “Contas e uso”)": "How OpenCode usage reaches Habblaud (opens Help under “Accounts and usage”)",
   "Agente do OpenCode": "OpenCode agent",
@@ -3340,4 +3339,7 @@ export const EN: Readonly<Record<string, string>> = {
   "padrão": "default",
   "Filtrar os agentes do Hermes por perfil": "Filter Hermes agents by profile",
   "Perfis do Hermes": "Hermes profiles",
+  "Mês": "Month",
+  "Limite mensal": "Monthly limit",
+  "O OpenCode informa os limites do plano aberto (5 h, semana e mês): estes números são da última leitura ({0}).": "OpenCode reports the open plan limits (5 h, week and month): these numbers are from the last reading ({0}).",
 };

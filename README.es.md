@@ -665,7 +665,7 @@ chip de la cuenta de Codex es hueco y lleva el sello **CODEX**.
 ### OpenCode
 
 Las sesiones de OpenCode V2 entran por su servicio HTTP/SSE local: personaje, sala del proyecto, subagentes, actividad
-actual, terminal, historial de los últimos siete días, mensajes y la tarjeta de uso de 5 horas/semanal. No hay plugin que
+actual, terminal, historial de los últimos siete días, mensajes y la tarjeta de uso de 5 horas/semana/mes. No hay plugin que
 instalar: Habblaud lee `$XDG_STATE_HOME/opencode/service.json` (o `~/.local/state/opencode/service.json`) y usa la
 contraseña solo en memoria. `HABBLAUD_OPENCODE=0` lo apaga; `HABBLAUD_OPENCODE_URL` / `HABBLAUD_OPENCODE_PASSWORD` apuntan
 a un servicio explícito. Las sesiones archivadas hace más de `HABBLAUD_OPENCODE_RECENT_MIN` minutos (120 por defecto)

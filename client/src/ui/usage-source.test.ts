@@ -69,8 +69,9 @@ describe('cartão de uso de uma conta do OpenCode', () => {
   it('a origem e a explicação citam o OpenCode', () => {
     const usage = { source: 'opencode' as const, fiveHour: win, fetchedAt: 0 };
     expect(openCodeUsageNote(opencode({ usage }), 12 * MIN)).toBe(
-      'O OpenCode informa os limites do plano aberto (5 h e semana): estes números são da última leitura (há 12 min).',
+      'O OpenCode informa os limites do plano aberto (5 h, semana e mês): estes números são da última leitura (há 12 min).',
     );
+    expect(cardState(opencode({ usage: { source: 'opencode', monthly: win, fetchedAt: 0 } }))).toBe('ok');
   });
 });
 

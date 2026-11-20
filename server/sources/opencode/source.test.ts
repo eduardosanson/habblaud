@@ -37,6 +37,7 @@ const USAGE = {
   go: {
     rolling: { percent: 5, limited: false, resetsAt: 11_000 },
     weekly: { percent: 39, limited: false, resetsAt: 22_000 },
+    monthly: { percent: 82, limited: false, resetsAt: 33_000 },
   },
   budgets: [],
 };
@@ -163,7 +164,7 @@ describe('fonte do OpenCode: boot', () => {
       provider: 'opencode',
       name: 'OpenCode',
       short: 'O',
-      usage: { source: 'opencode', fiveHour: { utilization: 5 }, sevenDay: { utilization: 39 } },
+      usage: { source: 'opencode', fiveHour: { utilization: 5 }, sevenDay: { utilization: 39 }, monthly: { utilization: 82 } },
     });
     expect(ctx.source.sources()).toEqual([
       { label: 'opencode', provider: 'opencode', path: '/home/u/.local/state/opencode', sessions: 1, ok: true },

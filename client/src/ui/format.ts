@@ -105,6 +105,8 @@ export function compactDuration(ms: number): string {
 
 export const FIVE_HOURS_MS = 5 * HOUR;
 export const WEEK_MS = 7 * DAY;
+/** Duração máxima de um mês para a janela mensal (o reinício real vem de `resetsAt`). */
+export const MONTH_MS = 31 * DAY;
 
 /** Apresentação de uma janela de uso (5 h ou semana), já considerando a idade dos números. */
 export interface UsageWindowView {

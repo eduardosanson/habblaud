@@ -633,7 +633,7 @@ Codex account chip is hollow and carries the **CODEX** tag.
 ### OpenCode
 
 OpenCode V2 sessions join the office through its local HTTP/SSE service: character, project room, subagents, current
-activity, terminal, history of the last seven days, messages and the 5-hour/weekly usage card. There's no plugin to install:
+activity, terminal, history of the last seven days, messages and the 5-hour/weekly/monthly usage card. There's no plugin to install:
 Habblaud reads `$XDG_STATE_HOME/opencode/service.json` (or `~/.local/state/opencode/service.json`) and uses the password only
 in memory. `HABBLAUD_OPENCODE=0` turns it off; `HABBLAUD_OPENCODE_URL` / `HABBLAUD_OPENCODE_PASSWORD` point to an explicit
 service. Archived sessions older than `HABBLAUD_OPENCODE_RECENT_MIN` minutes (default 120) stay out, and active ones always

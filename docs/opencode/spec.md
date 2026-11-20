@@ -26,8 +26,8 @@ fases seguintes.
 - RF08: presença por sessão ativa ou vista/atualizada na janela configurável (padrão 2 h); sessões arquivadas e
   removidas saem do escritório.
 - RF09: reconectar o SSE com backoff e ressincronizar sessões, ativas e uso ao reconectar.
-- RF10: registrar a conta `opencode` no `AccountsService`, com uso de 5 h e semanal mapeado de `rolling` e
-  `weekly`.
+- RF10: registrar a conta `opencode` no `AccountsService`, com uso de 5 h, semanal e mensal mapeado de `rolling`,
+  `weekly` e `monthly`.
 
 ### Requisitos não funcionais
 
@@ -50,7 +50,7 @@ fases seguintes.
 - CA05: `permission.asked` deixa o agente `waiting` com o motivo; `permission.replied` volta o status.
 - CA06: sessão com `time.viewed` antiga e sem eventos sai depois da janela; sessão ativa nunca sai.
 - CA07: reconexão do SSE refaz a lista de sessões e não duplica agentes.
-- CA08: o uso `rolling`/`weekly` aparece na conta `opencode` com a origem `opencode`.
+- CA08: o uso `rolling`/`weekly`/`monthly` aparece na conta `opencode` com a origem `opencode`.
 - CA09: agentes do OpenCode não entram no pacote do Habblaud World (o protocolo ainda só aceita Claude/Codex).
 - CA10: nenhum segredo do `service.json` aparece no snapshot, no feed ou no log.
 

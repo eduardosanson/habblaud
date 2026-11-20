@@ -389,6 +389,27 @@ describe('fonte do Codex: uso do plano', () => {
     expect(ctx.accounts.list(new Map())[0].usage).toEqual({ source: 'codex', fetchedAt: ctx.now(), noQuota: true });
   });
 
+  it('sessão aberta e parada não esconde o uso mais novo de um rollout fechado', () => {
+    const ctx = setup();
+    const t0 = ctx.now();
+    // Sessão aberta (lock) parada desde as 03:28: a última leitura dela é antiga.
+    ctx.home.rollout(T, [
+      R.meta(T, { at: t0 - 2 * 3600_000 }),
+      R.tokens({ input: 1, output: 1, at: t0 - 2 * 3600_000, rateLimits: { primary: { used: 5 }, secondary: { used: 41 } } }),
+    ], { mtime: t0 - 2 * 3600_000 });
+    ctx.home.lock(T, t0 - 3 * 3600_000);
+    // Outra sessão, já fechada, leu números mais novos às 12:10.
+    ctx.home.rollout(C, [
+      R.meta(C, { at: t0 - 3600_000 }),
+      R.tokens({ input: 1, output: 1, at: t0 - 3600_000, rateLimits: { primary: { used: 61 }, secondary: { used: 61 }, plan: 'plus' } }),
+    ], { mtime: t0 - 3600_000 });
+    ctx.source.boot();
+    expect(ctx.accounts.list(new Map())[0]).toMatchObject({
+      plan: 'Plus',
+      usage: { source: 'codex', fetchedAt: t0 - 3600_000, fiveHour: { utilization: 61 }, sevenDay: { utilization: 61 } },
+    });
+  });
+
   it('conta sem sessão aberta: o uso do último rollout (com a idade dele)', () => {
     const ctx = setup();
     const at = ctx.now() - 2 * 3600_000;

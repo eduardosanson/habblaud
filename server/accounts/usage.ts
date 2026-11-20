@@ -13,7 +13,7 @@ export type UsageStatus = AccountInfo['usageStatus'];
 
 /** Números com mais de 30 min são exibidos como "desatualizados". */
 export const STALE_AFTER_MS = 30 * 60_000;
-const WINDOW_KEYS = ['fiveHour', 'sevenDay', 'sevenDayOpus', 'sevenDaySonnet'] as const;
+const WINDOW_KEYS = ['fiveHour', 'sevenDay', 'sevenDayOpus', 'sevenDaySonnet', 'monthly'] as const;
 
 function num(v: unknown): number | undefined {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
