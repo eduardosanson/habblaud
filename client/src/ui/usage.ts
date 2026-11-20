@@ -222,7 +222,7 @@ export function antigravityUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus
   if (!isAntigravity(a)) return '';
   if (cardState(a) === 'empty') return tr('Não há o que instalar: o uso vem do próprio CLI do Antigravity (`agy`).');
   const age = a.usage ? relativeTime(a.usage.fetchedAt, now) : '';
-  return tr('O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon): estes números são da última leitura ({0}).', [age]);
+  return tr('O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon); o cartão usa a pior janela e a dica lista cada grupo. Estes números são da última leitura ({0}).', [age]);
 }
 
 /** Explicação do cartão de uma conta do Hermes (dica); '' nas outras. O Hermes não informa limites de plano. */

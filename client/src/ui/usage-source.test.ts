@@ -91,7 +91,7 @@ describe('cartão de uso de uma conta do Antigravity', () => {
     expect(cardState(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }))).toBe('ok');
     expect(showsUsageAge(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }))).toBe(true);
     expect(antigravityUsageNote(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }), 12 * MIN)).toBe(
-      'O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon): estes números são da última leitura (há 12 min).',
+      'O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon); o cartão usa a pior janela e a dica lista cada grupo. Estes números são da última leitura (há 12 min).',
     );
     expect(antigravityUsageNote(antigravity(), 0)).toBe('Não há o que instalar: o uso vem do próprio CLI do Antigravity (`agy`).');
     expect(antigravityUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
