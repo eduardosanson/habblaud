@@ -13,7 +13,6 @@ export type UsageStatus = AccountInfo['usageStatus'];
 
 /** Números com mais de 30 min são exibidos como "desatualizados". */
 export const STALE_AFTER_MS = 30 * 60_000;
-const WINDOW_KEYS = ['fiveHour', 'sevenDay', 'sevenDayOpus', 'sevenDaySonnet', 'monthly'] as const;
 
 function num(v: unknown): number | undefined {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -71,20 +70,6 @@ export function usageFromCache(cached: unknown): AccountUsage | undefined {
   return usageFromWindows(c.utilization, 'cache', fetchedAt);
 }
 
-/**
- * Janelas cujo reinício já passou desde a coleta ficam SEM DADOS (são omitidas): o percentual
- * antigo não vale mais e não dá para saber quanto já foi usado na janela nova — exibir 0% faria
- * a cota parecer cheia. Voltam a aparecer quando a fonte trouxer números novos.
- */
-export function rollover(usage: AccountUsage, now: number): AccountUsage {
-  const out: AccountUsage = { ...usage };
-  for (const key of WINDOW_KEYS) {
-    const w = usage[key];
-    if (w?.resetsAt !== undefined && w.resetsAt <= now) delete out[key];
-  }
-  return out;
-}
-
 export interface UsageView {
   usage?: AccountUsage;
   status: UsageStatus;
@@ -118,6 +103,7 @@ export class UsageStore {
     const all = [...(this.entries.get(accountId)?.values() ?? [])];
     const best = all.reduce<AccountUsage | undefined>((acc, u) => (!acc || u.fetchedAt > acc.fetchedAt ? u : acc), undefined);
     if (!best) return { status: 'disabled' };
-    return { usage: rollover(best, now), status: now - best.fetchedAt > STALE_AFTER_MS ? 'stale' : 'ok' };
+    // As janelas vencidas ficam no uso: o cliente troca o percentual por "—/renovada" (nunca por 0%).
+    return { usage: best, status: now - best.fetchedAt > STALE_AFTER_MS ? 'stale' : 'ok' };
   }
 }

@@ -15,7 +15,8 @@ do meio (0.**3**.0).
 - **Uso do Codex com uma sessão aberta e parada.** O cartão da conta mostrava a última leitura da sessão aberta, mesmo
   quando outro rollout (já fechado) tinha números mais novos: uma sessão parada desde as 03:28 escondia a leitura das
   12:10, e a semana aparecia com 41% em vez de 61%. Ao subir, o Habblaud agora sempre procura o uso mais recente nos
-  rollouts recentes e mantém o de maior horário.
+  rollouts recentes e mantém o de maior horário. A janela que já reiniciou também não some mais: fica **—** com o
+  aviso **renovada**.
 - **Limite mensal e semana do OpenCode no cartão.** O serviço do OpenCode informa três janelas (`rolling`, semana e
   mês), mas o cartão mostrava só as duas primeiras e podia ficar até um minuto atrás do serviço. Agora o cartão mostra
   o mês e relê o uso a cada 15 s, sem esperar a releitura completa das sessões.

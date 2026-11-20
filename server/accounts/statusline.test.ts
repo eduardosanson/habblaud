@@ -176,12 +176,12 @@ describe('AccountsService com a fonte statusline', () => {
     expect(svc.list(new Map())[0]).toMatchObject({ id: '.claude-conta2', usageStatus: 'ok', usage: { source: 'statusline' } });
   });
 
-  it('janela que já reiniciou desde a coleta aparece sem dados', () => {
+  it('janela que já reiniciou continua no uso para o cliente mostrar "renovada"', () => {
     writeFileSync(join(usageDir, 'c.json'), JSON.stringify(record({ configDir: join(home, '.claude'), accountId: '.claude' })));
     const svc = service();
     now = Date.parse('2026-10-06T14:05:00Z');
     const u = svc.list(new Map())[0].usage!;
-    expect(u.fiveHour).toBeUndefined();
+    expect(u.fiveHour).toEqual({ utilization: 42, resetsAt: Date.parse('2026-10-06T14:00:00Z') });
     expect(u.sevenDay).toEqual({ utilization: 15, resetsAt: Date.parse('2026-10-09T23:00:00Z') });
   });
 });

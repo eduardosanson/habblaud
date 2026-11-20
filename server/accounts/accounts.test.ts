@@ -5,7 +5,7 @@ import { setQuiet } from '../log';
 import { tempDir } from '../test/fixtures';
 import { accountIds, codexDirsRefused, discoverClaudeDirs, detectAccounts, isClaudeDir, isCodexHome, parseClaudeAliases, shortcutsByDir } from './detect';
 import { AccountsService } from './service';
-import { rollover, STALE_AFTER_MS, usageFromCache, usageFromWindows, UsageStore } from './usage';
+import { STALE_AFTER_MS, usageFromCache, usageFromWindows, UsageStore } from './usage';
 
 setQuiet(true);
 
@@ -188,20 +188,15 @@ describe('uso (5h e semanal)', () => {
     expect(store.view('x', NOW + STALE_AFTER_MS).status).toBe('stale');
   });
 
-  it('janelas cujo reinício já passou ficam sem dados (nunca um 0% inventado)', () => {
-    const u = usageFromWindows(windows, 'cache', NOW)!;
-    // Antes do reinício da semana, mas depois do da sessão de 5h.
-    const r = rollover(u, Date.parse('2026-10-06T15:00:00Z'));
-    expect(r.fiveHour).toBeUndefined();
-    expect(r.sevenDay).toEqual({ utilization: 15, resetsAt: Date.parse('2026-10-09T23:00:00Z') });
-    // Sem horário de reinício: continua valendo.
-    expect(r.sevenDaySonnet).toEqual({ utilization: 3 });
-    const later = rollover(u, Date.parse('2026-10-10T00:00:00Z'));
-    expect(later.fiveHour).toBeUndefined();
-    expect(later.sevenDay).toBeUndefined();
-    expect(later).toMatchObject({ source: 'cache', fetchedAt: NOW });
-    // O original não é alterado.
-    expect(u.fiveHour?.utilization).toBe(42.5);
+  it('guarda a janela vencida para o cliente mostrar "renovada" (nunca um 0% inventado)', () => {
+    const store = new UsageStore();
+    store.set('x', usageFromWindows(windows, 'cache', NOW)!);
+    // Depois do reinício da sessão de 5h: a janela continua no uso, com o percentual antigo; o cliente é que
+    // troca o número por "—" e o reinício por "renovada".
+    const v = store.view('x', Date.parse('2026-10-06T15:00:00Z'));
+    expect(v.usage?.fiveHour).toEqual({ utilization: 42.5, resetsAt: Date.parse('2026-10-06T14:00:00.123Z') });
+    expect(v.usage?.sevenDay).toEqual({ utilization: 15, resetsAt: Date.parse('2026-10-09T23:00:00Z') });
+    expect(v.usage?.sevenDaySonnet).toEqual({ utilization: 3 });
   });
 
   it('vale a fonte com números mais recentes; limpar uma fonte devolve a outra', () => {

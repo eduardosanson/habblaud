@@ -760,7 +760,7 @@ cada conta. Confira com `npm run mod:status`. Em versões anteriores do Claude C
 
 As fontes são arquivos locais: nenhuma lê senhas ou tokens, nem faz chamadas de rede. Vale sempre a fonte com os
 números mais recentes. Números com mais de 30 minutos aparecem como **desatualizados**; uma janela que já reiniciou
-desde a coleta aparece como **—** até chegarem números novos.
+desde a coleta aparece como **—** com o aviso **renovada** até chegarem números novos.
 
 </details>
 

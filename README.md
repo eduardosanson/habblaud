@@ -776,7 +776,7 @@ reply. Check with `npm run mod:status`. On earlier versions of Claude Code, the 
 
 The sources are local files: none of them reads passwords or tokens, or makes network calls. The source with the
 most recent numbers always wins. Numbers older than 30 minutes show up as **outdated**; a window that has already reset
-since the numbers were collected shows up as **—** until new numbers arrive.
+since the numbers were collected shows up as **—** with the **renewed** note until new numbers arrive.
 
 </details>
 
