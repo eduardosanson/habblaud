@@ -4,6 +4,7 @@
 //        [--eval "js executado na página antes da foto"] [--frames 3 --interval 800] [--full]
 //        [--clip x,y,w,h]
 // Imprime erros de console/página encontrados (útil para depurar sem DevTools).
+import { existsSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
 const [url, out, ...rest] = process.argv.slice(2);
@@ -25,7 +26,8 @@ const evalJs = opt('eval', '');
 const clipArg = opt('clip', '');
 const clip = clipArg ? (([x, y, w, h]) => ({ x, y, width: w, height: h }))(clipArg.split(',').map(Number)) : undefined;
 
-const browser = await chromium.launch({ headless: true });
+const chrome = process.env.CHROME_PATH ?? (existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : undefined);
+const browser = await chromium.launch({ headless: true, ...(chrome ? { executablePath: chrome } : {}) });
 const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: scale });
 const problems = [];
 page.on('console', (m) => {
