@@ -557,6 +557,24 @@ em `shared/world/city.ts` (fonte da verdade; o servidor do mundo guarda a cópia
   200 ms) e `close`; no modo demonstração, `FakeWorldStream` (20 prédios com o meu no lote (3,1), 5 pessoas andando
   nas calçadas e uma sentada num banco da praça, minimapa, `afk` depois de 60 s; `?perf=N` enche N lotes).
 
+## Roadmap (`/roadmap`)
+
+A página `/roadmap` lê os roadmaps do Hermes Pipeline e conversa com o agente que os movimenta. O servidor do Habblaud
+faz o proxy de `/api/roadmap/*` para o pipeline, injeta o token do Habblaud e limita as rotas ao contrato de leitura e
+conversa. O navegador nunca vê o token e nenhuma ferramenta de mutação passa por aqui: quem move o roadmap é o agente,
+dentro do pipeline, com `actionId`, `expectedRevision` e auditoria.
+
+- `server/roadmap/config.ts`: `HABBLAUD_ROADMAP`, `HABBLAUD_ROADMAP_URL`, `HABBLAUD_ROADMAP_TOKEN` (aceita
+  `PIPELINE_HABBLAUD_TOKEN` como conveniência) e `HABBLAUD_ROADMAP_IDS` (lista de roadmaps reais; filtra roadmaps e
+  sessões de seed). Sem token, o recurso fica desligado e o botão da barra superior não
+  aparece.
+- `server/roadmap/proxy.ts`: rotas `/api/roadmap/status`, `/api/roadmap/roadmaps`, snapshot, SSE de roadmap, sessões,
+  histórico e envio de mensagem; erros viram o envelope `{error:{code,message,retryable}}` do contrato.
+- Só a porta local com `Host` loopback (o mesmo critério do terminal e do World); pela porta do celular, nem com login.
+  O status responde mesmo desligado para a página explicar o motivo.
+- O SSE é repassado sem buffer (`Cache-Control: no-cache`, `X-Accel-Buffering: no`) e a conexão é encerrada quando o
+  navegador sai.
+
 ## Variáveis de ambiente
 
 | Variável | Padrão | Uso |
@@ -582,6 +600,10 @@ em `shared/world/city.ts` (fonte da verdade; o servidor do mundo guarda a cópia
 | `HABBLAUD_WORLD_URL` | `https://server.habblaud.com` | servidor do Habblaud World: só `https://` ou `wss://`, sem caminho; `http://127.0.0.1:*` só no modo dev (recusada, o World fica desligado). O prédio sobe pelo WebSocket na mesma origem (`/v1/socket`) |
 | `HABBLAUD_WORLD` | ligado | `0` (`false`, `off`, `no`) desliga o Habblaud World: rotas 404, nada na interface e nada sai |
 | `HABBLAUD_WORLD_DEV` | desligado (`--dev` liga) | `1` aceita o servidor do mundo em `http://127.0.0.1` ou `ws://127.0.0.1` |
+| `HABBLAUD_ROADMAP` | ligado (com token) | `0` desliga a página `/roadmap`; sem token ela já fica desligada |
+| `HABBLAUD_ROADMAP_URL` | `http://127.0.0.1:49500` | endereço do Hermes Pipeline, sem caminho; `http://` só para o próprio computador ou `host.docker.internal`, `https://` para outro host |
+| `HABBLAUD_ROADMAP_TOKEN` | — | token do Habblaud no pipeline (`roadmap.read` + `agent.converse`); `PIPELINE_HABBLAUD_TOKEN` também vale. Fica só no servidor |
+| `HABBLAUD_ROADMAP_IDS` | todos | IDs de roadmap separados por vírgula; restringe a lista e as sessões aos roadmaps reais (ex.: `atlas-ondas`) |
 
 No hook de permissão (ambiente do Claude Code; os argumentos `--port`/`--timeout` gravados pelo instalador têm
 preferência): `HABBLAUD_PORT` (porta do Habblaud, padrão `4747`), `HABBLAUD_PERMISSION_TIMEOUT` (segundos de espera

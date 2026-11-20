@@ -40,6 +40,13 @@ do meio (0.**3**.0).
   vez de um cartão por perfil. Um seletor logo abaixo abre uma lista com checkboxes e permite escolher **um ou mais
   perfis**; o filtro vale para a lista, o feed e os avisos. As contas do Claude Code, Codex e OpenCode continuam com um
   chip cada.
+- **Roadmap no Habblaud.** O botão **Roadmap** na barra superior abre `/roadmap`, uma leitura dos roadmaps do
+  `hermes-pipeline` por snapshot e SSE: visão geral, fases, backlog com histórias/tasks/bugs, vínculos de origem e
+  correção, peso e estimativa em tokens e trabalho agora. A conversa vai para o agente do pipeline e mostra o recibo da
+  ação; o Habblaud só lê e conversa, não escreve estado. O token do pipeline fica no servidor, o navegador fala com
+  `/api/roadmap/*` e a página é local, como o terminal. Peso, estimativa e gestão ficam no pipeline, inclusive para
+  roadmaps importados sem esses campos; o primeiro roadmap devolvido é o padrão. `HABBLAUD_ROADMAP_IDS` restringe a
+  página aos roadmaps reais e a conversa só oferece sessões vinculadas ao roadmap selecionado.
 
 ## [1.0.3] - 2026-10-16
 

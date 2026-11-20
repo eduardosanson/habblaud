@@ -703,6 +703,22 @@ happens while it's running, and the day follows your browser's time zone. With d
 shows made-up numbers (with the "demo" badge) and lets you switch to the real data; the demo agents never
 go into the real stats.
 
+### Roadmap
+
+The **Roadmap** button in the top bar opens `/roadmap`, a reading view of the **Hermes Pipeline**
+roadmaps: overview, phases, backlog, work now and the conversation with the agent that moves the roadmap. The page only
+reads snapshots/SSE and sends messages; creating, editing, moving, estimating and archiving stay in the pipeline. The
+agent is the only writer, and every action comes back as a receipt (`applied`/`rejected`) before the page reloads the
+snapshot.
+
+The token never reaches the browser: Habblaud talks to `HABBLAUD_ROADMAP_URL` from the server, keeps
+`HABBLAUD_ROADMAP_TOKEN` in memory and serves `/api/roadmap/*` on the same origin. The roadmap is **local only** (like
+the terminal and the World): the phone port never sees it. Without a token, the button stays hidden and the page explains
+what is missing. The first roadmap returned by the pipeline is the default (today the Atlas Store). `HABBLAUD_ROADMAP_IDS`
+can restrict the page to the real roadmaps; the conversation only offers sessions linked to the selected roadmap.
+
+![The Habblaud roadmap page showing the Atlas Store roadmap, progress and phases](docs/screenshots/roadmap/live-roadmap-desktop.png)
+
 ### Demo mode
 
 Want to see the office full without having any sessions open?
@@ -795,13 +811,17 @@ Everything works without configuring anything. If you need to adjust something, 
 | `HABBLAUD_HERMES_URL` | `http://127.0.0.1:4747/api/hermes/events` | Where the Hermes plugin sends events (use the published port in Docker). |
 | `HABBLAUD_HERMES_PROJECT` | profile `terminal.cwd` | Forces the room for the sessions of that Hermes profile. |
 | `HABBLAUD_HERMES_HOME` | `~/.hermes` | Base Hermes folder used by `npm run hermes:install`. |
+| `HABBLAUD_ROADMAP` | on (with token) | `0` turns the roadmap page off; without a token it is already off. |
+| `HABBLAUD_ROADMAP_URL` | `http://127.0.0.1:49500` | Hermes Pipeline address, with no path. `http://` only for this computer or `host.docker.internal`; `https://` for another host. |
+| `HABBLAUD_ROADMAP_TOKEN` | — | Habblaud token in the pipeline (`roadmap.read` + `agent.converse`). `PIPELINE_HABBLAUD_TOKEN` is accepted as a fallback. It stays on the server and never reaches the browser. |
+| `HABBLAUD_ROADMAP_IDS` | all | Comma-separated roadmap IDs to show (e.g. `atlas-ondas`); hides seed/test roadmaps and their sessions. |
 | `HABBLAUD_UPDATE_CHECK` | on | `0` turns off the new-version check (a request to the repository's releases on GitHub every 6 h). |
 | `HABBLAUD_LANG` | system language (except English), otherwise `pt-BR` | Language of the texts the server builds (activities, notices, logs): `pt-BR`, `en`, `es` or `fr`. The interface follows the browser or the choice in Settings › Language. See [Languages](#languages). |
 | `HABBLAUD_ACCOUNTS` | — | JSON to customize name, letter or color, matched by the account folder name. E.g. `[{"id":".claude-conta2","name":"Trabalho","short":"T","color":"#5cc97b"}]`. |
 
 **In Docker**, `HABBLAUD_PORT`, `HABBLAUD_BIND`, `HABBLAUD_ALLOWED_HOSTS`, `HABBLAUD_DEMO`, `HABBLAUD_TERMINAL`,
-`HABBLAUD_MENSAGENS`, `HABBLAUD_CODEX`, `HABBLAUD_UPDATE_CHECK`, `HABBLAUD_LANG`, `HABBLAUD_PTY`, the `HABBLAUD_WORLD*` and the
-`HABBLAUD_REMOTE_*` apply (in `.env` or in the environment), as do `HABBLAUD_CLAUDE_DIRS`, `HABBLAUD_CODEX_DIRS`, `HABBLAUD_USAGE_DIR` and
+`HABBLAUD_MENSAGENS`, `HABBLAUD_CODEX`, `HABBLAUD_UPDATE_CHECK`, `HABBLAUD_LANG`, `HABBLAUD_PTY`, the `HABBLAUD_WORLD*`, the
+`HABBLAUD_ROADMAP*` and the `HABBLAUD_REMOTE_*` apply (in `.env` or in the environment), as do `HABBLAUD_CLAUDE_DIRS`, `HABBLAUD_CODEX_DIRS`, `HABBLAUD_USAGE_DIR` and
 `HABBLAUD_ACCOUNTS` (read by `docker:up` on the host); the rest are fixed inside the container. Options: `npm run docker:up -- --no-build` (starts without rebuilding),
 `npm run docker:down` (stops) and `npm run docker:logs` (follows the logs).
 
