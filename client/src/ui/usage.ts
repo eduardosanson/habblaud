@@ -13,7 +13,7 @@ import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { FIVE_HOURS_MS, MONTH_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex, isHermes, isOpenCode } from './provider';
+import { isAntigravity, isCodex, isHermes, isOpenCode } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
@@ -23,6 +23,7 @@ export const SOURCE_LABEL: Record<NonNullable<AccountInfo['usage']>['source'], s
   statusline: tr('ao vivo (statusline do Claude Code)'),
   codex: tr('arquivos do Codex'),
   opencode: tr('limites do OpenCode'),
+  antigravity: tr('limites do Antigravity'),
 };
 
 /** Origem para mostrar: o arquivo ao vivo pode ter sido gravado pelo mod do Habblaud ou pelo tap. */
@@ -174,7 +175,7 @@ export function cardState(a: Pick<AccountInfo, 'usage' | 'usageStatus'>): CardSt
 export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>): boolean {
   if (!a.usage) return false;
   const state = cardState(a);
-  return state === 'stale' || ((isCodex(a) || isOpenCode(a)) && state !== 'empty');
+  return state === 'stale' || ((isCodex(a) || isOpenCode(a) || isAntigravity(a)) && state !== 'empty');
 }
 
 /** Linha embaixo do nome: e-mail; no Codex/OpenCode (sem e-mail), o plano; nas outras, a pasta (o grupo Hermes não tem). */
@@ -182,6 +183,7 @@ export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
   if (isOpenCode(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'OpenCode';
+  if (isAntigravity(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Antigravity';
   if (isHermes(a) && a.id === HERMES_GROUP) return '';
   return a.configDir;
 }
@@ -190,7 +192,7 @@ export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir
 export function usageMessage(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>): [string, string] {
   const state = cardState(a);
   if (state === 'noquota') return [tr('sem cota'), tr('sem cota')];
-  if (isCodex(a) || isOpenCode(a) || isHermes(a)) return [tr('sem dados ainda'), tr('sem dados')];
+  if (isCodex(a) || isOpenCode(a) || isAntigravity(a) || isHermes(a)) return [tr('sem dados ainda'), tr('sem dados')];
   return [tr('sem dados de uso'), tr('sem dados')];
 }
 
@@ -213,6 +215,14 @@ export function openCodeUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' |
   if (state === 'empty') return tr('Não há o que instalar: o OpenCode informa os limites do plano no próprio serviço local.');
   const age = a.usage ? relativeTime(a.usage.fetchedAt, now) : '';
   return tr('O OpenCode informa os limites do plano aberto (5 h, semana e mês): estes números são da última leitura ({0}).', [age]);
+}
+
+/** Explicação do cartão de uma conta do Antigravity (dica); '' nas outras. */
+export function antigravityUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>, now: number): string {
+  if (!isAntigravity(a)) return '';
+  if (cardState(a) === 'empty') return tr('Não há o que instalar: o uso vem do próprio CLI do Antigravity (`agy`).');
+  const age = a.usage ? relativeTime(a.usage.fetchedAt, now) : '';
+  return tr('O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon): estes números são da última leitura ({0}).', [age]);
 }
 
 /** Explicação do cartão de uma conta do Hermes (dica); '' nas outras. O Hermes não informa limites de plano. */
@@ -366,13 +376,14 @@ export class UsageCards {
     const codex = isCodex(a);
     const opencode = isOpenCode(a);
     const hermes = isHermes(a);
-    const toolCard = codex || opencode || hermes;
+    const antigravity = isAntigravity(a);
+    const toolCard = codex || opencode || hermes || antigravity;
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
     updateProviderTag(r.prov, a.provider ?? 'claude', a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : '']));
+    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : antigravity ? ' (Antigravity)' : '']));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -406,7 +417,9 @@ export class UsageCards {
           ? tr('Atualizado {0}: o Codex só grava o uso enquanto alguma sessão roda.', [age])
           : opencode
             ? tr('Atualizado {0}: o OpenCode informa os limites do plano aberto.', [age])
-            : tr('Números de {0}: podem não refletir o uso atual.', [age]),
+            : antigravity
+              ? tr('Atualizado {0}: o Antigravity informa os grupos do plano.', [age])
+              : tr('Números de {0}: podem não refletir o uso atual.', [age]),
       );
     }
 
@@ -418,7 +431,10 @@ export class UsageCards {
     setHidden(r.msg, state !== 'empty' && state !== 'noquota');
     setHidden(r.how, state === 'noquota' || hermes);
     r.msg.classList.toggle('is-noquota', state === 'noquota');
-    setTitle(r.msg, state === 'noquota' ? (codex ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a, now) : '') : '');
+    setTitle(
+      r.msg,
+      state === 'noquota' ? (codex ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a, now) : antigravity ? antigravityUsageNote(a, now) : '') : '',
+    );
     setText(r.howLong, toolCard ? tr('Como funciona') : tr('Como ativar'));
     setText(r.howShort, toolCard ? tr('Saber') : tr('Ativar'));
     r.how.dataset.help = codex ? 'codex' : 'usage';
@@ -428,7 +444,9 @@ export class UsageCards {
         ? tr('Como o uso do Codex chega ao Habblaud (abre a ajuda em “Codex”)')
         : opencode
           ? tr('Como o uso do OpenCode chega ao Habblaud (abre a ajuda em “Contas e uso”)')
-          : tr('Como mostrar o uso desta conta (abre a ajuda em “Contas e uso”)'),
+          : antigravity
+            ? tr('Como o uso do Antigravity chega ao Habblaud (abre a ajuda em “Contas e uso”)')
+            : tr('Como mostrar o uso desta conta (abre a ajuda em “Contas e uso”)'),
     );
     this.updateTip(r, a, state, five, week, month, now);
   }
@@ -445,8 +463,9 @@ export class UsageCards {
     const codex = isCodex(a);
     const opencode = isOpenCode(a);
     const hermes = isHermes(a);
-    const toolCard = codex || opencode || hermes;
-    const tool = codex ? 'Codex' : opencode ? 'OpenCode' : hermes ? 'Hermes' : '';
+    const antigravity = isAntigravity(a);
+    const toolCard = codex || opencode || hermes || antigravity;
+    const tool = codex ? 'Codex' : opencode ? 'OpenCode' : hermes ? 'Hermes' : antigravity ? 'Antigravity' : '';
     setText(r.tipTitle, `${a.name}${tool && !new RegExp(tool, 'i').test(a.name) ? ` · ${tool}` : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
     const rows: [string, string][] = [];
     if (tool) rows.push([tr('Ferramenta'), tool]);
@@ -456,11 +475,17 @@ export class UsageCards {
     if (a.id !== HERMES_GROUP) rows.push([tr('Pasta'), a.configDir]);
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
-    if (u && (u.fiveHour || u.sevenDay || u.monthly)) {
+    if (u && (u.fiveHour || u.sevenDay || u.monthly || u.details?.length)) {
       rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
       rows.push([tr('Semana'), week?.summary ?? '—']);
       if (u.monthly) rows.push([tr('Mês'), month?.summary ?? '—']);
-      // Opus e Sonnet são janelas do Claude: no Codex/OpenCode/Hermes não existem.
+      // Antigravity tem vários grupos (Gemini, Claude/GPT, Argon): o cartão mostra o pior 5 h/semana e a dica lista
+      // cada grupo com o seu reinício.
+      for (const detail of u.details ?? []) {
+        const view = usageWindowView({ utilization: detail.utilization, ...(detail.resetsAt !== undefined ? { resetsAt: detail.resetsAt } : {}) }, u.fetchedAt, now, WEEK_MS);
+        rows.push([detail.label, view?.summary ?? '—']);
+      }
+      // Opus e Sonnet são janelas do Claude: no Codex/OpenCode/Hermes/Antigravity não existem.
       const opus = toolCard ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
       const sonnet = toolCard ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
       if (opus) rows.push([tr('Opus (semana)'), opus.summary]);
@@ -475,7 +500,13 @@ export class UsageCards {
 
     // Codex/OpenCode/Hermes: a explicação da ferramenta, sem o passo a passo do Claude Code.
     if (toolCard) {
-      const note = codex ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a, now) : hermesUsageNote(a);
+      const note = codex
+        ? codexUsageNote(a, now)
+        : opencode
+          ? openCodeUsageNote(a, now)
+          : antigravity
+            ? antigravityUsageNote(a, now)
+            : hermesUsageNote(a);
       setText(r.tipNote, note);
       setHidden(r.tipNote, !note);
       setHidden(r.tipSetup, true);

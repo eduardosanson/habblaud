@@ -32,6 +32,7 @@ const PROVIDER_TITLE: Record<Provider, string> = {
   codex: tr('Agente do Codex (OpenAI)'),
   opencode: tr('Agente do OpenCode'),
   hermes: tr('Agente do Hermes'),
+  antigravity: tr('Agente do Antigravity'),
 };
 
 /** Selo de texto da ferramenta ao lado do nome da conta (onde há espaço: gaveta, terminal, cartão de uso, dica). */

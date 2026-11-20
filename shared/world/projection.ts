@@ -141,7 +141,7 @@ export function projectWithReport(input: ProjectionInput, ids: WorldIdSource, no
     if (isDemoId(a.id) || isDemoId(a.roomId) || !roomIds.has(a.roomId)) continue;
     // O protocolo do World ainda só aceita Claude Code/Codex: agentes do OpenCode e do Hermes ficam no escritório
     // local até o servidor do mundo conhecer a ferramenta. Nunca mande "opencode"/"hermes" como se fosse outra.
-    if (a.provider === 'opencode' || a.provider === 'hermes') continue;
+    if (a.provider === 'opencode' || a.provider === 'hermes' || a.provider === 'antigravity') continue;
     if ((a.kind !== 'main' && a.kind !== 'sub') || !isWorldStatus(a.status)) continue;
     const list = byRoom.get(a.roomId);
     if (list) list.push(a);

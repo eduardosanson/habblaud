@@ -17,7 +17,7 @@ export type AgentKind = 'main' | 'sub';
  * - opencode: OpenCode V2 (serviço local com API HTTP + SSE);
  * - hermes: Hermes (plugin Python observa os hooks e manda eventos locais).
  */
-export type Provider = 'claude' | 'codex' | 'opencode' | 'hermes';
+export type Provider = 'claude' | 'codex' | 'opencode' | 'hermes' | 'antigravity';
 
 /**
  * Estado de alto nível de um agente — é o que dirige o comportamento do personagem.
@@ -276,6 +276,16 @@ export interface UsageWindow {
   resetsAt?: number;
 }
 
+/** Uma janela extra com nome (Antigravity tem grupos: Gemini Models, Claude/GPT, Argon...). */
+export interface UsageDetail {
+  /** Nome para exibir, ex.: "Gemini Models · semana". */
+  label: string;
+  /** Percentual usado, 0–100. */
+  utilization: number;
+  /** Quando reinicia (epoch ms). */
+  resetsAt?: number;
+}
+
 export interface AccountUsage {
   /** Sessão de 5 horas (no OpenCode, a janela `rolling`). */
   fiveHour?: UsageWindow;
@@ -285,15 +295,18 @@ export interface AccountUsage {
   sevenDaySonnet?: UsageWindow;
   /** Limite mensal (OpenCode Go). */
   monthly?: UsageWindow;
+  /** Janelas nomeadas de ferramentas com mais de um grupo de cota (Antigravity). */
+  details?: UsageDetail[];
   /**
-   * Origem dos números (todas são arquivos locais gravados pela própria ferramenta):
+   * Origem dos números (todas são locais ou do próprio serviço da ferramenta):
    * - 'statusline': capturado ao vivo e gravado em ~/.habblaud/usage/<conta>.json pelo mod do Habblaud
    *   (mod/habblaud, recomendado) ou pelo scripts/statusline-tap.mjs (campo rate_limits do statusline);
    * - 'cache': `cachedUsageUtilization` gravado pelo próprio Claude Code (atualiza quando alguém roda /usage);
-   * - 'codex': `rate_limits` dos arquivos de sessão do Codex (só se renovam enquanto alguma sessão roda);
-   * - 'opencode': limites do plano do serviço local do OpenCode (`rolling`, `weekly` e `monthly`).
+   * - 'codex': `rate_limits` dos arquivos de sessão e do app-server local do Codex;
+   * - 'opencode': limites do plano do serviço local do OpenCode (`rolling`, `weekly` e `monthly`);
+   * - 'antigravity': `agy -p "/usage" --output-format json` (grupos e janelas do Antigravity).
    */
-  source: 'cache' | 'statusline' | 'codex' | 'opencode';
+  source: 'cache' | 'statusline' | 'codex' | 'opencode' | 'antigravity';
   /** Quem gravou o arquivo ao vivo ('statusline'): o mod do Habblaud no Claude Code ou o tap de statusline. */
   via?: 'mod' | 'tap';
   /**

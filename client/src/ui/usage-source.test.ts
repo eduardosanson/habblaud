@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
 import { HERMES_GROUP } from './account-filter';
-import { cardState, codexUsageNote, hermesUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import { antigravityUsageNote, cardState, codexUsageNote, hermesUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -16,6 +16,7 @@ describe('sourceLabel', () => {
     expect(sourceLabel({ source: 'cache', fetchedAt: 0 })).toBe('cache do /usage do Claude Code');
     expect(sourceLabel({ source: 'codex', fetchedAt: 0 })).toBe('arquivos do Codex');
     expect(sourceLabel({ source: 'opencode', fetchedAt: 0 })).toBe('limites do OpenCode');
+    expect(sourceLabel({ source: 'antigravity', fetchedAt: 0 })).toBe('limites do Antigravity');
   });
 });
 
@@ -72,6 +73,28 @@ describe('cartão de uso de uma conta do OpenCode', () => {
       'O OpenCode informa os limites do plano aberto (5 h, semana e mês): estes números são da última leitura (há 12 min).',
     );
     expect(cardState(opencode({ usage: { source: 'opencode', monthly: win, fetchedAt: 0 } }))).toBe('ok');
+  });
+});
+
+describe('cartão de uso de uma conta do Antigravity', () => {
+  const antigravity = (over: Partial<Acc> = {}): Acc => ({
+    provider: 'antigravity',
+    usageStatus: 'ok',
+    configDir: '~/.gemini/antigravity-cli',
+    plan: 'Antigravity',
+    ...over,
+  });
+
+  it('sem números, não há o que instalar; com números, cita os grupos do plano', () => {
+    expect(usageMessage(antigravity())).toEqual(['sem dados ainda', 'sem dados']);
+    expect(usageSubtitle(antigravity())).toBe('plano Antigravity');
+    expect(cardState(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }))).toBe('ok');
+    expect(showsUsageAge(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }))).toBe(true);
+    expect(antigravityUsageNote(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }), 12 * MIN)).toBe(
+      'O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon): estes números são da última leitura (há 12 min).',
+    );
+    expect(antigravityUsageNote(antigravity(), 0)).toBe('Não há o que instalar: o uso vem do próprio CLI do Antigravity (`agy`).');
+    expect(antigravityUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
   });
 });
 

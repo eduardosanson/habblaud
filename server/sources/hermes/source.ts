@@ -4,6 +4,7 @@
 // Cada perfil vira uma conta. A sala é o `project` que o plugin manda (o `terminal.cwd` do perfil, quando existe);
 // sem ele, a pasta do perfil. Eventos são observações: nada volta para a sessão do Hermes e um evento inválido é
 // ignorado.
+import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Activity, AgentStatus, SourceInfo, TerminalEntry, TerminalInit } from '../../../shared/types';
@@ -151,8 +152,37 @@ export class HermesSource implements AgentSource {
 
   start(): void {
     if (this.timer) return;
+    this.discoverProfiles();
     this.timer = setInterval(() => this.sweep(), this.opts.sweepMs ?? 60_000);
     this.timer.unref?.();
+  }
+
+  /**
+   * Perfis do Hermes que existem no disco viram contas desde o boot, mesmo sem sessão viva. Sem isso, um reinício do
+   * Habblaud (ou do gateway) some com o Hermes inteiro até o próximo hook — e uma sessão ociosa pode não mandar hook
+   * nenhum por horas. As sessões continuam vindo só do plugin; perfil sem sessão aparece com 0 e "sem dados".
+   */
+  private discoverProfiles(): void {
+    if (!existsSync(this.baseHome)) return;
+    const found: Array<{ name: string; home: string }> = [];
+    if (existsSync(join(this.baseHome, 'config.toml')) || existsSync(join(this.baseHome, 'state.db'))) {
+      found.push({ name: 'default', home: this.baseHome });
+    }
+    try {
+      for (const entry of readdirSync(join(this.baseHome, 'profiles'), { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        const home = join(this.baseHome, 'profiles', entry.name);
+        found.push({ name: entry.name, home });
+      }
+    } catch {
+      // sem pasta de perfis: só o default, se existir
+    }
+    found.sort((a, b) => (a.name === 'default' ? -1 : b.name === 'default' ? 1 : a.name.localeCompare(b.name)));
+    for (const p of found) this.ensureProfile(p.name, p.home, false);
+    if (found.length) {
+      this.seenAny = true;
+      this.applyAccounts();
+    }
   }
 
   stop(): void {
@@ -283,7 +313,7 @@ export class HermesSource implements AgentSource {
   // ---------------------------------------------------------------- sessões e perfis
 
   /** O perfil vira conta (id final do AccountsService) e a pasta é a sala de fallback. */
-  private ensureProfile(name: string, home: string | undefined): Profile {
+  private ensureProfile(name: string, home: string | undefined, apply = true): Profile {
     let p = this.profiles.get(name);
     if (!p) {
       const h = home ?? (name === 'default' ? this.baseHome : join(this.baseHome, 'profiles', name));
@@ -295,10 +325,10 @@ export class HermesSource implements AgentSource {
         color: ACCOUNT_COLORS[this.profiles.size % ACCOUNT_COLORS.length],
       };
       this.profiles.set(name, p);
-      this.applyAccounts();
+      if (apply) this.applyAccounts();
     } else if (home && p.home !== home) {
       p.home = home;
-      this.applyAccounts();
+      if (apply) this.applyAccounts();
     }
     return p;
   }

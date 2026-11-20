@@ -667,6 +667,22 @@ initials), and each project becomes a room.
   and only register when the Hermes version knows them. `HABBLAUD_HERMES=0` turns the plugin off.
 - **Habblaud World:** Hermes agents stay out while the World protocol only accepts Claude Code/Codex.
 
+### Antigravity
+
+Antigravity CLI (`agy`) sessions join through the hook in `~/.gemini/config/hooks.json`: `npm run antigravity:install`
+adds a `habblaud` group next to the hooks you already use (Orca, ai-memory…) and the hook sends small events to
+`127.0.0.1`. Each conversation becomes an agent in the project room, with status, turn title and the tool in use.
+
+- **Plan usage:** comes from the CLI itself (`agy -p "/usage" --output-format json`), with the Gemini Models,
+  Claude and GPT models and Gemini 4 Argon groups. The card shows the **worst** 5-hour and weekly window across groups;
+  the card tooltip lists each group with its percentage and reset.
+- **Install/uninstall:** `npm run antigravity:install`, `npm run antigravity:status`, `npm run antigravity:uninstall`.
+  The installer preserves the other hook groups and backs up `hooks.json` before writing. `HABBLAUD_ANTIGRAVITY=0` turns
+  the source off.
+- **Limitations of this version:** terminal, history, permissions and messages from the office don't exist for Antigravity
+  yet; agents also stay out of Habblaud World (the protocol only accepts Claude/Codex). Usage needs `agy` on PATH and
+  signed in.
+
 ### GitHub in the office
 
 What the agents do on GitHub livens up the project's room, with no token and no internet access: Habblaud reads the

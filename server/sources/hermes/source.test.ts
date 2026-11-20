@@ -1,5 +1,8 @@
 // Fonte do Hermes: eventos do plugin aplicados no Office (sessões, status, ferramentas, subagentes, aprovação e uso),
 // com contas por perfil e sala pelo projeto. Sem I/O: AccountService + Office + relógio injetado.
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AgentInfo, OfficeSnapshot } from '../../../shared/types';
 import { AccountsService } from '../../accounts/service';
@@ -49,6 +52,33 @@ describe('HermesSource: sessão principal', () => {
     expect(a?.role).toBe('Hermes (cli)');
     expect(accounts.entriesOf('hermes').map((e) => [e.id, e.detected.name])).toEqual([['developer', 'Hermes D']]);
     expect(source.sources()).toEqual([{ label: 'hermes', provider: 'hermes', path: DEV, sessions: 1, ok: true }]);
+  });
+
+  it('perfis do disco viram contas no boot, mesmo sem sessão viva', () => {
+    const home = mkdtempSync(join(tmpdir(), 'hermes-home-'));
+    try {
+      mkdirSync(join(home, 'profiles', 'developer'), { recursive: true });
+      writeFileSync(join(home, 'config.toml'), '');
+      const accounts = new AccountsService({ dirs: [], home, env: {}, onChange: () => {} });
+      const office = new Office({
+        names: new NameStore(null),
+        version: 't',
+        startedAt: 0,
+        accounts: (s) => accounts.list(s),
+        sources: () => [],
+        accountName: (id) => accounts.find(id)?.detected.name,
+      });
+      const source = new HermesSource({ accounts, office, home });
+      source.start();
+      expect(accounts.entriesOf('hermes').map((e) => [e.id, e.detected.short])).toEqual([
+        ['default', 'H'],
+        ['developer', 'D'],
+      ]);
+      expect(source.sources()).toMatchObject([{ label: 'hermes', provider: 'hermes', sessions: 0, ok: true }]);
+      source.stop();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it('conta do Hermes usa as iniciais do perfil, não o nome inteiro', () => {

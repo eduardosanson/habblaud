@@ -54,6 +54,7 @@ export const WORLD_TOOL_ACCOUNTS: Readonly<Record<Provider, { short: string; nam
   codex: { short: 'X', name: 'Codex', color: '#a77bf3' },
   opencode: { short: 'O', name: 'OpenCode', color: '#5cc97b' },
   hermes: { short: 'H', name: 'Hermes', color: '#d4a34a' },
+  antigravity: { short: 'AG', name: 'Antigravity', color: '#e8710a' },
 };
 const PROVIDERS: readonly Provider[] = ['claude', 'codex'];
 /** Status que existem no mundo; um que esta versão não conhece vira 'idle' (passeia, sem prometer nada). */

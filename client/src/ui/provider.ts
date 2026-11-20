@@ -8,7 +8,7 @@ import { shortcutHint } from './model';
 import { tr } from '../../../shared/i18n';
 
 /** Nome de cada ferramenta como aparece nos textos. */
-export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes' };
+export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', hermes: 'Hermes', antigravity: 'Antigravity' };
 
 /** Ferramenta de um agente, conta, sessão ou pedido (ausente = Claude Code). */
 export function providerOf(x: { provider?: Provider } | null | undefined): Provider {
@@ -27,6 +27,10 @@ export function isHermes(x: { provider?: Provider } | null | undefined): boolean
   return x?.provider === 'hermes';
 }
 
+export function isAntigravity(x: { provider?: Provider } | null | undefined): boolean {
+  return x?.provider === 'antigravity';
+}
+
 /**
  * O id de conta tem cara de pasta do Codex (".codex", ".codex-trabalho", ".codex~2", "demo:.codex")? Só para quando a
  * conta já não está no snapshot (ex.: histórico, "Meu dia"): com a conta à mão, vale o `provider` dela.
@@ -43,11 +47,16 @@ export function looksLikeHermesId(id: string): boolean {
   return /(?:^|[:/\\])hermes(?:[-_.~]|$)/i.test(id);
 }
 
+export function looksLikeAntigravityId(id: string): boolean {
+  return /(?:^|[:/\\])antigravity(?:[-_.~]|$)/i.test(id);
+}
+
 /** Ferramenta da conta: a do snapshot; sem ela, a dica de quem chamou ou o jeito do id. */
 export function accountProvider(account: Pick<AccountInfo, 'provider'> | undefined, fallbackId = '', hint?: Provider): Provider {
   if (account) return providerOf(account);
   if (hint) return hint;
   if (looksLikeOpenCodeId(fallbackId)) return 'opencode';
+  if (looksLikeAntigravityId(fallbackId)) return 'antigravity';
   if (looksLikeHermesId(fallbackId)) return 'hermes';
   return looksLikeCodexId(fallbackId) ? 'codex' : 'claude';
 }
@@ -61,12 +70,13 @@ export function fallbackShort(id: string, provider: Provider = accountProvider(u
   const rest = id
     .replace(/^.*:/, '')
     .replace(/~\d+$/, '')
-    .replace(/^\.?(?:claude|codex|opencode|hermes)(?=[-_.]|$)[-_.]?/i, '');
+    .replace(/^\.?(?:claude|codex|opencode|hermes|antigravity)(?=[-_.]|$)[-_.]?/i, '');
   const letter = /[\p{L}\p{N}]/u.exec(rest)?.[0];
   if (letter) return letter.toUpperCase();
   if (provider === 'codex') return 'X';
   if (provider === 'opencode') return 'O';
   if (provider === 'hermes') return 'H';
+  if (provider === 'antigravity') return 'AG';
   return '?';
 }
 
@@ -93,8 +103,13 @@ export function accountChipLabel(account: Pick<AccountInfo, 'name' | 'email' | '
  * shell (a letra de uma conta do Codex/Hermes não é um atalho); cada ferramenta só entra quando há uma conta dela.
  */
 export function emptyOfficeHint(accounts: readonly Pick<AccountInfo, 'short' | 'provider'>[]): string {
-  const keys = shortcutHint(accounts.filter((a) => !isCodex(a) && !isOpenCode(a) && !isHermes(a)));
-  const tools = [accounts.some(isCodex) ? 'Codex' : '', accounts.some(isOpenCode) ? 'OpenCode' : '', accounts.some(isHermes) ? 'Hermes' : ''].filter(Boolean);
+  const keys = shortcutHint(accounts.filter((a) => !isCodex(a) && !isOpenCode(a) && !isHermes(a) && !isAntigravity(a)));
+  const tools = [
+    accounts.some(isCodex) ? 'Codex' : '',
+    accounts.some(isOpenCode) ? 'OpenCode' : '',
+    accounts.some(isHermes) ? 'Hermes' : '',
+    accounts.some(isAntigravity) ? 'Antigravity' : '',
+  ].filter(Boolean);
   if (!tools.length) return tr('Abra o Claude Code em qualquer projeto{0} e veja seu agente chegar.', [keys ? ` (${keys})` : '']);
   const list = tools.length === 1 ? tools[0] : `${tools.slice(0, -1).join(', ')} ou ${tools[tools.length - 1]}`;
   return tr('Abra o Claude Code{0}, o {1} em qualquer projeto e veja seu agente chegar.', [keys ? ` (${keys})` : '', list]);

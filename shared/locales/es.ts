@@ -3343,4 +3343,13 @@ export const ES: Readonly<Record<string, string>> = {
   "Mês": "Mes",
   "Limite mensal": "Límite mensual",
   "O OpenCode informa os limites do plano aberto (5 h, semana e mês): estes números são da última leitura ({0}).": "OpenCode informa los límites del plan abierto (5 h, semana y mes): estos números son de la última lectura ({0}).",
+  "limites do Antigravity": "límites de Antigravity",
+  "Não há o que instalar: o uso vem do próprio CLI do Antigravity (`agy`).": "No hay nada que instalar: el uso viene del propio CLI de Antigravity (`agy`).",
+  "O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon): estes números são da última leitura ({0}).": "Antigravity informa los grupos del plan (Gemini, Claude/GPT, Argon): estos números son de la última lectura ({0}).",
+  "Atualizado {0}: o Antigravity informa os grupos do plano.": "Actualizado {0}: Antigravity informa los grupos del plan.",
+  "Como o uso do Antigravity chega ao Habblaud (abre a ajuda em “Contas e uso”)": "Cómo llega el uso de Antigravity a Habblaud (abre la ayuda en «Cuentas y uso»)",
+  "Agente do Antigravity": "Agente de Antigravity",
+  "Eventos do Antigravity: falha ao aplicar um evento ({0}).": "Eventos de Antigravity: fallo al aplicar un evento ({0}).",
+  "eventos do Antigravity só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)": "los eventos de Antigravity solo se aceptan desde este equipo (http://localhost o http://127.0.0.1)",
+  "Antigravity: não foi possível ler o uso ({0}).": "Antigravity: no fue posible leer el uso ({0}).",
 };

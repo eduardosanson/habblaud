@@ -42,6 +42,7 @@ import { OpenCodeSource } from './sources/opencode/source';
 import { OpenCodeHistory } from './sources/opencode/history';
 import { openCodeServiceFile } from './sources/opencode/client';
 import { HermesSource } from './sources/hermes/source';
+import { AntigravitySource } from './sources/antigravity/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -166,6 +167,11 @@ if (opencode) agents.add(opencode);
 // aparece no snapshot; ela só existe para receber o plugin e some sozinha quando ninguém usa.
 const hermes = new HermesSource({ accounts, office });
 agents.add(hermes);
+// Antigravity: o hook do `agy` (mod/habblaud-antigravity) manda eventos; o uso vem do próprio CLI. Só liga quando o
+// estado do Antigravity existe, para quem não usa não ganhar uma conta vazia.
+const antigravityWanted = process.env.HABBLAUD_ANTIGRAVITY !== '0' && existsSync(join(config.home, '.gemini', 'antigravity-cli'));
+const antigravity = antigravityWanted ? new AntigravitySource({ accounts, office, home: config.home, env: process.env }) : undefined;
+if (antigravity) agents.add(antigravity);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
@@ -426,6 +432,7 @@ const api = createApiHandler({
   },
   codexLive,
   hermes,
+  antigravity,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,

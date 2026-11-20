@@ -667,6 +667,22 @@ cada projeto vira uma sala.
   opcionais e só entram quando a versão do Hermes os conhece. `HABBLAUD_HERMES=0` desliga o plugin.
 - **Habblaud World:** agentes do Hermes ficam fora enquanto o protocolo do World só aceitar Claude Code/Codex.
 
+### Antigravity
+
+As sessões do Antigravity CLI (`agy`) entram pelo hook em `~/.gemini/config/hooks.json`: `npm run antigravity:install`
+acrescenta um grupo `habblaud` ao lado dos hooks que você já usa (Orca, ai-memory…) e o hook manda eventos pequenos para
+`127.0.0.1`. Cada conversa vira um agente na sala do projeto, com status, título do turno e ferramenta em uso.
+
+- **Uso do plano:** vem do próprio CLI (`agy -p "/usage" --output-format json`), com os grupos Gemini Models,
+  Claude and GPT models e Gemini 4 Argon. O cartão mostra a **pior** janela de 5 h e semanal entre os grupos; a dica do
+  cartão lista cada grupo com o seu percentual e reinício.
+- **Instalar/desinstalar:** `npm run antigravity:install`, `npm run antigravity:status`, `npm run antigravity:uninstall`.
+  O instalador preserva os outros grupos de hooks e faz uma cópia do `hooks.json` antes de gravar. `HABBLAUD_ANTIGRAVITY=0`
+  desliga a fonte.
+- **Limitações desta versão:** terminal, histórico, permissões e mensagens pelo escritório ainda não existem para o
+  Antigravity; os agentes também ficam fora do Habblaud World (o protocolo só aceita Claude/Codex). O uso depende do
+  binário `agy` estar no PATH e autenticado.
+
 ### GitHub no escritório
 
 O que os agentes fazem no GitHub anima a sala do projeto, sem token e sem acessar a internet: o Habblaud lê nos

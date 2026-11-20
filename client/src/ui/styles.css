@@ -399,6 +399,23 @@
   --step: 4px;
 }
 
+/* Conta do Antigravity: chip escuro com borda quente e um canto diagonal, sem logotipo. */
+.ui-acc-chip[data-provider='antigravity'] {
+  border-radius: 2px;
+  background: #241506;
+  color: var(--acc);
+  box-shadow:
+    inset 0 0 0 1px var(--acc),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.3);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+}
+
+.ui-acc-chip--lg[data-provider='antigravity'] {
+  box-shadow:
+    inset 0 0 0 2px var(--acc),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.3);
+}
+
 /* Selo de texto da ferramenta ao lado do nome da conta (fonte do sistema: na Pixelify o "C" parece "O"). */
 .ui-prov {
   display: inline-flex;
@@ -426,6 +443,10 @@
 
 .ui-prov[data-provider='hermes'] {
   color: #e7c58a;
+}
+
+.ui-prov[data-provider='antigravity'] {
+  color: #ffc38a;
 }
 
 .ui-prov--xs {

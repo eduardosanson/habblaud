@@ -27,6 +27,14 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Antigravity no escritório (MVP).** Sessões do Antigravity CLI (`agy`) entram pelo hook em
+  `~/.gemini/config/hooks.json` (`npm run antigravity:install`): personagem, sala pelo projeto, status, título do turno e
+  ferramentas. O uso vem do próprio `agy -p "/usage" --output-format json`, com os grupos Gemini, Claude/GPT e Argon;
+  o cartão mostra a pior janela de 5 h/semana e a dica lista cada grupo. Ainda não tem terminal, histórico, permissões
+  nem mensagens pelo escritório, e os agentes ficam fora do Habblaud World (o protocolo só aceita Claude/Codex).
+- **Hermes visível depois de reiniciar.** Os perfis de `~/.hermes` voltam como contas no boot mesmo sem sessão viva; o
+  agente em si continua aparecendo quando o plugin manda um evento/heartbeat. Sem isso, um restart do Habblaud ou do
+  gateway deixava o Hermes inteiro invisível até a próxima sessão.
 - **OpenCode no escritório (leitura ao vivo).** O Habblaud agora lê o serviço local do OpenCode V2 pela API HTTP e
   mostra no escritório as sessões abertas, o que cada uma está fazendo, subagentes, shells e o uso do plano. Cada
   sessão vira um personagem na sala do projeto e o agente do OpenCode (`build`, `plan`...) vira o papel. A fonte lê o
