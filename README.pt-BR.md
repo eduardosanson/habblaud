@@ -620,8 +620,9 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
   na fila da sessão e o Codex a pega quando termina o que está fazendo (até uns 10 segundos depois). No modo Node o
   próprio Habblaud roda o comando; **no Docker**, deixe `npm run codex:bridge` rodando no Mac (o container não
   enxerga o seu Codex).
-- **Uso de 5 horas e semanal:** vem dos próprios arquivos do Codex e só se renova enquanto alguma sessão roda; o cartão
-  mostra a idade dos números e "sem cota" quando o workspace ficou sem créditos.
+- **Uso de 5 horas e semanal:** vem dos próprios arquivos do Codex e, quando o Codex está aberto, também do app-server
+  local dele (um socket Unix) — o cartão acompanha os limites sem esperar um turno. Sem o Codex aberto, mostra a idade
+  da última leitura; e "sem cota" quando o workspace ficou sem créditos.
 - **Quando a sessão entra:** com a primeira mensagem (é quando o Codex grava a pasta do projeto); uma CLI aberta e
   ainda sem conversa não aparece.
 - **Quando a sessão sai do escritório:** a CLI do Codex roda as sessões num servidor em segundo plano, que as mantém
@@ -758,9 +759,10 @@ cada conta. Confira com `npm run mod:status`. Em versões anteriores do Claude C
 | Tap de statusline (Claude Code anterior ao 2.1.287) | Ao vivo, pelo comando de statusline, no mesmo arquivo. |
 | Cache do `/usage` (sempre ligado) | O Claude Code grava o último resultado do comando `/usage`. No modo Node, o Habblaud relê a cada 60 s; no Docker, vale o valor lido no último `npm run docker:up`. Só muda quando alguém roda `/usage`. |
 
-As fontes são arquivos locais: nenhuma lê senhas ou tokens, nem faz chamadas de rede. Vale sempre a fonte com os
-números mais recentes. Números com mais de 30 minutos aparecem como **desatualizados**; uma janela que já reiniciou
-desde a coleta aparece como **—** com o aviso **renovada** até chegarem números novos.
+As fontes são locais: arquivos que as ferramentas gravam e, no Codex aberto, o socket do app-server dele. O Habblaud
+não lê senhas nem tokens, e não faz chamadas de rede; quem fala com o servidor do Codex é o próprio app-server. Vale
+sempre a fonte com os números mais recentes. Números com mais de 30 minutos aparecem como **desatualizados**; uma janela
+que já reiniciou desde a coleta aparece como **—** com o aviso **renovada** até chegarem números novos.
 
 </details>
 

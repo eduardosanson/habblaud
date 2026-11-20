@@ -621,8 +621,9 @@ Codex account chip is hollow and carries the **CODEX** tag.
   the session's queue and Codex picks it up when it finishes what it's doing (up to about 10 seconds later). In Node mode
   Habblaud runs the command itself; **in Docker**, keep `npm run codex:bridge` running on the Mac (the container can't
   see your Codex).
-- **5-hour and weekly usage:** comes from Codex's own files and only refreshes while some session is running; the card
-  shows how old the numbers are and "no quota" when the workspace has run out of credits.
+- **5-hour and weekly usage:** comes from Codex's own files and, while Codex is open, also from its local app-server
+  (a Unix socket) — the card follows the limits without waiting for a turn. With Codex closed it shows how old the last
+  reading is; and "no quota" when the workspace has run out of credits.
 - **When the session comes in:** with the first message (that's when Codex records the project folder); a CLI that's open
   and still has no conversation doesn't show up.
 - **When the session leaves the office:** the Codex CLI runs sessions on a background server, which keeps them
@@ -774,9 +775,10 @@ reply. Check with `npm run mod:status`. On earlier versions of Claude Code, the 
 | Statusline tap (Claude Code older than 2.1.287) | Live, through the statusline command, in the same file. |
 | `/usage` cache (always on) | Claude Code saves the last result of the `/usage` command. In Node mode, Habblaud rereads it every 60 s; in Docker, the value read at the last `npm run docker:up` applies. It only changes when someone runs `/usage`. |
 
-The sources are local files: none of them reads passwords or tokens, or makes network calls. The source with the
-most recent numbers always wins. Numbers older than 30 minutes show up as **outdated**; a window that has already reset
-since the numbers were collected shows up as **—** with the **renewed** note until new numbers arrive.
+The sources are local: files the tools write, plus the Codex app-server socket while Codex is open. Habblaud doesn't
+read passwords or tokens, and makes no network calls; the Codex app-server is the one talking to the Codex server. The
+source with the most recent numbers always wins. Numbers older than 30 minutes show up as **outdated**; a window that
+has already reset since the numbers were collected shows up as **—** with the **renewed** note until new numbers arrive.
 
 </details>
 

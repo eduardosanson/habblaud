@@ -652,8 +652,9 @@ chip de la cuenta de Codex es hueco y lleva el sello **CODEX**.
   entra en la cola de la sesión y Codex lo toma cuando termina lo que está haciendo (hasta unos 10 segundos después). En
   modo Node, el propio Habblaud ejecuta el comando; **en Docker**, deja `npm run codex:bridge` en ejecución en el Mac
   (el contenedor no ve tu Codex).
-- **Uso de 5 horas y semanal:** viene de los propios archivos de Codex y solo se renueva mientras alguna sesión está en
-  ejecución; la tarjeta muestra la antigüedad de los números y "sin cuota" cuando el workspace se quedó sin créditos.
+- **Uso de 5 horas y semanal:** viene de los propios archivos de Codex y, con Codex abierto, también de su app-server
+  local (un socket Unix): la tarjeta sigue los límites sin esperar un turno. Con Codex cerrado muestra la antigüedad de
+  la última lectura y "sin cuota" cuando el workspace se quedó sin créditos.
 - **Cuándo entra la sesión:** con el primer mensaje (que es cuando Codex guarda la carpeta del proyecto); una CLI
   abierta y todavía sin conversación no aparece.
 - **Cuándo sale la sesión de la oficina:** la CLI de Codex ejecuta las sesiones en un servidor en segundo plano, que

@@ -12,6 +12,10 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Codex ao vivo quando ele está aberto.** O cartão só olhava os rollouts e ficava parado na última gravação (por
+  exemplo, 13 h atrás), mesmo com o Codex aberto consultando os limites no app-server local. Agora o Habblaud lê esse
+  socket a cada 15 s e mostra o limite atual; sem o Codex aberto, continua valendo a última leitura dos arquivos. É só
+  um socket Unix local: nada de `auth.json`, credenciais ou chamadas de rede do Habblaud.
 - **Uso do Codex com uma sessão aberta e parada.** O cartão da conta mostrava a última leitura da sessão aberta, mesmo
   quando outro rollout (já fechado) tinha números mais novos: uma sessão parada desde as 03:28 escondia a leitura das
   12:10, e a semana aparecia com 41% em vez de 61%. Ao subir, o Habblaud agora sempre procura o uso mais recente nos

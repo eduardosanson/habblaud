@@ -35,6 +35,7 @@ import type { AgentSource } from '../source';
 import { FileTail, LineBuffer, warnOversizedLine } from '../tail';
 import type { TerminalParser } from '../terminal';
 import { codexPlanLabel, detectCodexAccounts } from './accounts';
+import { codexAppServerSocket, readCodexAppServerUsage } from './app-server';
 import { readLocks, readRolloutHead, rolloutDirs, RolloutIndex, parseRolloutName, LOCKS_DIR, type LockInfo } from './files';
 import type { CodexLive } from './live';
 import {
@@ -98,6 +99,8 @@ export interface CodexSourceOptions {
   home?: string;
   now?: () => number;
   pollMs?: number;
+  /** Releitura do uso ao vivo no app-server local (Codex aberto; padrão 15 s). */
+  liveUsageMs?: number;
   /** Quanto do fim de cada rollout é lido ao abrir a sessão (padrão 1 MB). */
   tailBytes?: number;
   /** Desliga o fs.watch (testes). */
@@ -176,17 +179,21 @@ export class CodexSource implements AgentSource, CodexLive {
   private threads = new Map<string, ThreadTracker>();
   private dirWatchers = new Map<string, FSWatcher>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private liveTimer: ReturnType<typeof setInterval> | null = null;
+  private liveBusy = false;
   private kick: ReturnType<typeof setTimeout> | null = null;
   private lastPollAt = 0;
   private prefixChain: Promise<void> = Promise.resolve();
   private readonly now: () => number;
   private readonly tailBytes: number;
+  private readonly liveUsageMs: number;
   private readonly useWatch: boolean;
   private stopped = false;
 
   constructor(private readonly opts: CodexSourceOptions) {
     this.now = opts.now ?? Date.now;
     this.tailBytes = opts.tailBytes ?? 1024 * 1024;
+    this.liveUsageMs = opts.liveUsageMs ?? 15_000;
     this.useWatch = opts.watch ?? true;
     const env = opts.env ?? process.env;
     const claude = opts.accounts.entries();
@@ -226,6 +233,10 @@ export class CodexSource implements AgentSource, CodexLive {
     this.boot();
     this.timer = setInterval(() => this.safePoll(), this.opts.pollMs ?? 1_000);
     this.timer.unref?.();
+    // Codex aberto: o app-server local já tem o limite atual; lê sem esperar um turno gravar rollout.
+    void this.refreshLiveUsage();
+    this.liveTimer = setInterval(() => void this.refreshLiveUsage(), this.liveUsageMs);
+    this.liveTimer.unref?.();
   }
 
   /** Reconstrói as sessões abertas sem gerar avisos. Síncrono e curto. */
@@ -245,8 +256,10 @@ export class CodexSource implements AgentSource, CodexLive {
   stop(): void {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.liveTimer) clearInterval(this.liveTimer);
     if (this.kick) clearTimeout(this.kick);
     this.timer = null;
+    this.liveTimer = null;
     this.kick = null;
     for (const w of this.dirWatchers.values()) w.close();
     this.dirWatchers.clear();
@@ -739,6 +752,26 @@ export class CodexSource implements AgentSource, CodexLive {
         this.detected[i] = { ...this.detected[i], plan: label };
         this.register();
       }
+    }
+  }
+
+  /**
+   * Uso ao vivo do app-server local do Codex (quando o Codex está aberto): o TUI já consulta os limites a cada
+   * ~15 s, então o cartão não depende de um turno gravar rollout. Só socket Unix; nunca auth.json, credencial ou rede.
+   */
+  private async refreshLiveUsage(): Promise<void> {
+    if (this.liveBusy || this.stopped) return;
+    this.liveBusy = true;
+    try {
+      for (const acc of this.accs) {
+        if (this.stopped) return;
+        const live = await readCodexAppServerUsage({ socketPath: codexAppServerSocket(acc.dir), now: this.now() });
+        if (live && !this.stopped) this.pushUsage(acc, live.usage, live.plan);
+      }
+    } catch {
+      // app-server fechando/sem login: a fonte continua com os arquivos; tenta de novo no próximo ciclo.
+    } finally {
+      this.liveBusy = false;
     }
   }
 

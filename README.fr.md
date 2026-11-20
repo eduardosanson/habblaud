@@ -651,9 +651,9 @@ seulement : Codex n'indique pas le coût). La pastille du compte Codex est évid
   entre dans la file de la session et Codex le prend quand il a fini ce qu'il est en train de faire (jusqu'à une dizaine
   de secondes plus tard). En mode Node, Habblaud lance lui-même la commande ; **dans Docker**, laissez tourner
   `npm run codex:bridge` sur le Mac (le conteneur ne voit pas votre Codex).
-- **Utilisation sur 5 heures et sur la semaine :** elle provient des fichiers de Codex eux-mêmes et ne se met à jour que
-  pendant qu'une session tourne ; la carte affiche l'âge des chiffres et « sans quota » quand l'espace de travail n'a
-  plus de crédits.
+- **Utilisation sur 5 heures et sur la semaine :** elle provient des fichiers de Codex eux-mêmes et, quand Codex est
+  ouvert, aussi de son app-server local (un socket Unix) : la carte suit les limites sans attendre un tour. Codex fermé,
+  elle affiche l'âge de la dernière lecture et « sans quota » quand l'espace de travail n'a plus de crédits.
 - **Quand la session entre :** au premier message (c'est à ce moment que Codex enregistre le dossier du projet) ; une
   CLI ouverte mais encore sans conversation n'apparaît pas.
 - **Quand la session quitte le bureau :** la CLI de Codex fait tourner les sessions sur un serveur en arrière-plan, qui

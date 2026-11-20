@@ -9,3 +9,6 @@
 - Risco aceito: uma requisição local extra a cada 15 s; o serviço é loopback e a rota é experimental, com erro ignorado sem derrubar a fonte.
 - Decisão: `UsageStore.view` mantém as janelas vencidas (em vez de apagá-las) para o cliente trocar o percentual por “—” e o reinício por “renovada” — apagar fazia o limite de 5 h do Codex sumir quando a janela reiniciava.
 - Risco aceito: o snapshot carrega uma janela antiga sem utilidade para o cálculo; o cliente é a única tela que lê esses números e sempre confere `resetsAt` antes de mostrá-los.
+- Decisão: quando o Codex está aberto, o uso vem do app-server local (`app-server-control.sock`, WebSocket sobre Unix, `account/rateLimits/read`) a cada 15 s; é a única forma de atualizar sem um turno e sem ler `auth.json`. Sem o socket, vale o último rollout.
+- Decisão: o cliente WebSocket mínimo foi escrito no próprio arquivo (handshake + frames mascarados), sem dependência nova; o protocolo é experimental e qualquer falha volta para os arquivos.
+- Risco aceito: o app-server pode fazer a chamada de rede que atualiza os limites; o Habblaud só lê o socket local e nunca vê credenciais. Um app-server fechado/sem login simplesmente não responde e o cartão fica com a última leitura.
