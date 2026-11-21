@@ -1,6 +1,9 @@
 // Configuração do roadmap do Habblaud: a página `/roadmap` lê um Hermes Pipeline local
 // e conversa com o agente. O token fica só no servidor do Habblaud; o navegador fala
 // com `/api/roadmap/*`.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { tr } from '../../shared/i18n';
 
 export interface RoadmapConfig {
@@ -17,6 +20,15 @@ export interface RoadmapConfig {
 }
 
 export const DEFAULT_ROADMAP_URL = 'http://127.0.0.1:49500';
+
+function readRoadmapTokenFile(env: NodeJS.ProcessEnv): string {
+  const base = env.HABBLAUD_DATA_DIR?.trim() || join(homedir(), '.habblaud');
+  try {
+    return readFileSync(join(base, 'roadmap-token'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
 
 function isOn(value: string | undefined): boolean {
   return !!value && /^(1|true|yes|sim|on)$/i.test(value.trim());
@@ -39,7 +51,11 @@ function isLocalPipelineHost(hostname: string): boolean {
 export function parseRoadmapConfig(env: NodeJS.ProcessEnv = process.env): RoadmapConfig {
   const flag = env.HABBLAUD_ROADMAP?.trim();
   if (flag && !isOn(flag)) return { enabled: false };
-  const token = env.HABBLAUD_ROADMAP_TOKEN?.trim() || env.PIPELINE_HABBLAUD_TOKEN?.trim() || '';
+  const token =
+    env.HABBLAUD_ROADMAP_TOKEN?.trim() ||
+    env.PIPELINE_HABBLAUD_TOKEN?.trim() ||
+    readRoadmapTokenFile(env) ||
+    '';
   const ids = [...new Set((env.HABBLAUD_ROADMAP_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean))];
   const raw = env.HABBLAUD_ROADMAP_URL?.trim() || DEFAULT_ROADMAP_URL;
   let url: URL;
@@ -67,4 +83,15 @@ export function parseRoadmapConfig(env: NodeJS.ProcessEnv = process.env): Roadma
     };
   }
   return { enabled: true, url: `${url.protocol}//${url.host}`, token, ...(ids.length ? { ids } : {}) };
+}
+
+export function syncRoadmapTokenFile(token: string | undefined, env: NodeJS.ProcessEnv = process.env): void {
+  if (!token) return;
+  const base = env.HABBLAUD_DATA_DIR?.trim() || join(homedir(), '.habblaud');
+  try {
+    mkdirSync(base, { recursive: true });
+    writeFileSync(join(base, 'roadmap-token'), token + '\n', { mode: 0o600 });
+  } catch {
+    // best effort
+  }
 }

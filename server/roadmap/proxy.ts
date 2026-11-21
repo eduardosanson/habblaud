@@ -5,6 +5,9 @@
 // de mutação passa por aqui: quem move o roadmap é o agente, dentro do pipeline.
 import http from 'node:http';
 import https from 'node:https';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tr } from '../../shared/i18n';
 import { sendJson } from '../http/app';
@@ -45,12 +48,26 @@ function errorBody(code: string, message: string, retryable = false): Record<str
   return { error: { code, message, retryable } };
 }
 
+function currentToken(config: RoadmapConfig): string | undefined {
+  if (config.token) return config.token;
+  const base = process.env.HABBLAUD_DATA_DIR?.trim() || join(homedir(), '.habblaud');
+  try {
+    const value = readFileSync(join(base, 'roadmap-token'), 'utf8').trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function statusOf(config: RoadmapConfig, local: boolean): RoadmapStatus {
-  const configured = Boolean(config.url && config.token);
-  const available = local && config.enabled && configured;
+  const token = currentToken(config);
+  const configured = Boolean(config.url && token);
+  const available = local && !!config.url && configured;
   const reason = !local
     ? tr('o roadmap só abre pelo próprio computador (http://localhost)')
-    : config.warning ?? (!config.enabled ? tr('roadmap desligado (HABBLAUD_ROADMAP=0)') : undefined);
+    : !token
+      ? (config.warning ?? tr('HABBLAUD_ROADMAP_TOKEN não definido: o roadmap fica desligado até o token do Habblaud ser configurado'))
+      : config.warning ?? (!config.enabled ? tr('roadmap desligado (HABBLAUD_ROADMAP=0)') : undefined);
   return {
     enabled: config.enabled,
     configured,
@@ -188,9 +205,10 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       sendJson(res, 403, errorBody('local_only', tr('o roadmap só abre pelo próprio computador (http://localhost)')));
       return;
     }
-    if (!config.enabled || !config.url || !config.token) {
+    const token = currentToken(config);
+    if (!config.url || !token) {
       req.resume();
-      sendJson(res, 503, errorBody('roadmap_disabled', config.warning ?? tr('roadmap desligado (HABBLAUD_ROADMAP=0)')));
+      sendJson(res, 503, errorBody('roadmap_disabled', config.warning ?? tr('HABBLAUD_ROADMAP_TOKEN não definido: o roadmap fica desligado até o token do Habblaud ser configurado')));
       return;
     }
     if (method !== 'GET' && method !== 'POST') {
@@ -213,7 +231,7 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
     }
     if (config.ids?.length && method === 'GET' && (targetPath === '/api/roadmaps' || targetPath === '/api/agent/sessions')) {
       const listPath = targetPath;
-      void upstreamJson(config.url, config.token, listPath, url.search)
+      void upstreamJson(config.url, token, listPath, url.search)
         .then((result) =>
           filteredList(res, result, (data) => {
             if (listPath === '/api/roadmaps' && Array.isArray(data.roadmaps)) {
@@ -232,7 +250,7 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
         });
       return;
     }
-    void forward(req, res, url, targetPath, config.url, config.token, method === 'POST').catch((error: unknown) => {
+    void forward(req, res, url, targetPath, config.url, token, method === 'POST').catch((error: unknown) => {
       if (res.headersSent) return void res.destroy();
       const message = error instanceof Error && error.message === 'too_large' ? tr('corpo grande demais') : tr('o Hermes Pipeline não respondeu');
       sendJson(res, error instanceof Error && error.message === 'too_large' ? 413 : 502, errorBody('pipeline_unavailable', message, true));

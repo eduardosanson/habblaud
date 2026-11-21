@@ -7,7 +7,7 @@ describe('parseRoadmapConfig', () => {
   });
 
   it('sem token fica desligado e explica o motivo', () => {
-    const config = parseRoadmapConfig({});
+    const config = parseRoadmapConfig({ HABBLAUD_DATA_DIR: '/tmp/habblaud-roadmap-test-nao-existe' });
     expect(config.enabled).toBe(false);
     expect(config.warning).toMatch(/HABBLAUD_ROADMAP_TOKEN/);
     expect(config.url).toBe(DEFAULT_ROADMAP_URL);
