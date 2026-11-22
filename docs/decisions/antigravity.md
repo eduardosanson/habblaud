@@ -3,8 +3,8 @@
 ## DOR → SPEC — 2026-11-20
 
 - Decisão: entrar pelo **hook do `agy`** (`~/.gemini/config/hooks.json`), não por banco de conversas — o CLI já entrega `conversationId`, `cwd`, `lastUserInput` e ferramentas por evento, sem ler credenciais.
-- Decisão: o uso vem do próprio `agy -p "/usage" --output-format json`; os grupos (Gemini, Claude/GPT, Argon) são mais fiéis que um único percentual.
-- Risco aceito: o cartão usa a pior janela entre os grupos para avisar o quanto antes; o detalhe por grupo fica na dica.
+- Decisão: o uso vem do próprio `agy -p "/usage" --output-format json`, filtrando somente modelos do Google (`Gemini Models`, `Gemini 4 Argon`) e ignorando grupos de terceiros (`Claude and GPT models`).
+- Decisão: o cartão exibe cada limite do Google em linhas empilhadas (uma embaixo da outra, ajustando a altura da barra até 4 linhas) e o cartão do Hermes sem dados fica compacto.
 
 ## SPEC → PROMPT PLAN — 2026-11-20
 

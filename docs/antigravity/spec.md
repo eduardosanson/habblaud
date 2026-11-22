@@ -10,8 +10,8 @@ sem ler credenciais e sem tocar no banco de conversas.
 
 - Sessões principais por hook: `session_start`, `session_busy`, `session_idle`, `session_end`, `tool_start`, `tool_end`.
 - Sala pelo `cwd`/projeto; título pelo `lastUserInput`; modelo e atividade da ferramenta.
-- Uso do plano pelos grupos do `agy`: Gemini Models, Claude and GPT models, Gemini 4 Argon. O cartão usa a **pior**
-  janela de 5 h/semana e a dica lista todos os grupos.
+- Uso do plano pelos grupos do Google no `agy`: `Gemini Models` e `Gemini 4 Argon` (excluindo modelos de terceiros
+  como `Claude and GPT models`). O cartão mostra cada janela diretamente (uma embaixo da outra) e a dica lista os detalhes.
 - Instalador `antigravity:install|uninstall|status`, preservando os grupos de hooks existentes.
 
 ## Fora de escopo

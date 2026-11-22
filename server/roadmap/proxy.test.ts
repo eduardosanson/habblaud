@@ -156,4 +156,33 @@ describe('proxy do roadmap', () => {
     expect(response.status).toBe(502);
     expect((await response.json()).error.code).toBe('pipeline_unavailable');
   });
+
+  it('reflete troca de URL e token quando config é fornecida como função', async () => {
+    const seen: string[] = [];
+    const upstreamA = await listen((req, res) => {
+      seen.push(`A:${String(req.headers.authorization ?? '')}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ roadmaps: [{ id: 'a' }] }));
+    });
+    const upstreamB = await listen((req, res) => {
+      seen.push(`B:${String(req.headers.authorization ?? '')}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ roadmaps: [{ id: 'b' }] }));
+    });
+    let active: RoadmapConfig = { enabled: true, url: upstreamA, token: 'tok-a' };
+    const handler = createRoadmapHandler({ config: () => active, isLocal: () => true });
+    const base = await listen((req, res) => handler(req, res, new URL(req.url ?? '/', 'http://localhost')));
+
+    expect(await fetch(`${base}/api/roadmap/roadmaps`).then((r) => r.json())).toEqual({ roadmaps: [{ id: 'a' }] });
+    active = { enabled: true, url: upstreamB, token: 'tok-b' };
+    expect(await fetch(`${base}/api/roadmap/roadmaps`).then((r) => r.json())).toEqual({ roadmaps: [{ id: 'b' }] });
+    expect(seen).toEqual(['A:Bearer tok-a', 'B:Bearer tok-b']);
+  });
+
+  it('respeita enabled: false mesmo quando url e token estão preenchidos (HABBLAUD_ROADMAP=0)', async () => {
+    const base = await startProxy({ enabled: false, url: 'https://sanson-server.com', token: 'segredo' });
+    const status = await fetch(`${base}/api/roadmap/status`).then((r) => r.json());
+    expect(status).toMatchObject({ enabled: false, available: false });
+    expect((await fetch(`${base}/api/roadmap/roadmaps`)).status).toBe(503);
+  });
 });

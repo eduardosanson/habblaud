@@ -1,6 +1,6 @@
 // Leitor do uso ao vivo do Codex pelo app-server local (socket Unix, JSON-RPC por linha).
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,8 +8,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AccountsService } from '../../accounts/service';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
+import { codexHome, R, threadId } from '../../test/codex-fixtures';
 import { codexPlanLabel } from './accounts';
-import { codexAppServerSocket, readCodexAppServerUsage, usageFromAppServer } from './app-server';
+import { codexAppServerSocket, readCodexAppServerUsage, readCodexCliUsage, usageFromAppServer } from './app-server';
 import { CodexSource } from './source';
 
 let cleanups: Array<() => void> = [];
@@ -76,7 +77,7 @@ function clientFrame(buffer: Buffer): { payload: string; size: number } | undefi
 }
 
 /** Servidor WebSocket/JSON-RPC de mentira: responde initialize e account/rateLimits/read com o resultado dado. */
-async function fakeAppServer(result: Record<string, unknown> | null): Promise<string> {
+async function fakeAppServer(result: Record<string, unknown> | null, methods?: string[]): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'hb-codex-'));
   const socketPath = join(dir, 's.sock');
   const sockets: Socket[] = [];
@@ -101,7 +102,8 @@ async function fakeAppServer(result: Record<string, unknown> | null): Promise<st
       }
       for (let frame = clientFrame(buffer); frame; frame = clientFrame(buffer)) {
         buffer = buffer.subarray(frame.size);
-        const message = JSON.parse(frame.payload) as { id?: number };
+        const message = JSON.parse(frame.payload) as { id?: number; method?: string };
+        if (message.method) methods?.push(message.method);
         if (message.id === 1) socket.write(serverFrame(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} })));
         if (message.id === 2) {
           const reply = result
@@ -121,6 +123,55 @@ async function fakeAppServer(result: Record<string, unknown> | null): Promise<st
   return socketPath;
 }
 
+/** Cria um executável falso `codex` que responde `codex app-server` via JSON-RPC em stdio. */
+function fakeCodexCli(result: Record<string, unknown> | null, opts: { delayMs?: number; requireOpenStdin?: boolean; captureFile?: string } = {}): string {
+  const dir = mkdtempSync(join(tmpdir(), 'hb-codex-cli-'));
+  const binPath = join(dir, 'codex');
+  const script = `#!${process.execPath}
+const fs = require('fs');
+const result = ${JSON.stringify(result)};
+const delayMs = ${opts.delayMs ?? 15};
+const requireOpenStdin = ${opts.requireOpenStdin !== false};
+const captureFile = ${JSON.stringify(opts.captureFile ?? null)};
+if (process.argv[2] !== 'app-server') process.exit(2);
+let buf = '';
+let sawInitialized = false;
+if (requireOpenStdin) {
+  process.stdin.on('end', () => process.exit(0));
+}
+process.stdin.on('data', (chunk) => {
+  buf += chunk.toString();
+  const lines = buf.split('\\n');
+  buf = lines.pop() || '';
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialized') sawInitialized = true;
+    if (msg.id === 1) {
+      setTimeout(() => {
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }) + '\\n');
+      }, delayMs);
+    }
+    if (msg.id === 2) {
+      setTimeout(() => {
+        if (captureFile) {
+          fs.writeFileSync(captureFile, JSON.stringify({ codexHome: process.env.CODEX_HOME, sawInitialized }));
+        }
+        const reply = result
+          ? { jsonrpc: '2.0', id: 2, result }
+          : { jsonrpc: '2.0', id: 2, error: { code: -32000, message: 'sem login' } };
+        process.stdout.write(JSON.stringify(reply) + '\\n');
+      }, delayMs);
+    }
+  }
+});
+`;
+  writeFileSync(binPath, script);
+  chmodSync(binPath, 0o755);
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  return binPath;
+}
+
 describe('uso do Codex pelo app-server local', () => {
   const NOW = Date.parse('2026-11-20T01:30:00Z');
 
@@ -129,6 +180,7 @@ describe('uso do Codex pelo app-server local', () => {
     expect(live.plan).toBe('Plus');
     expect(live.usage).toEqual({
       source: 'codex',
+      via: 'app-server',
       fetchedAt: NOW,
       fiveHour: { utilization: 12, resetsAt: 1_800_000_000_000 },
       sevenDay: { utilization: 41, resetsAt: 1_900_000_000_000 },
@@ -151,18 +203,21 @@ describe('uso do Codex pelo app-server local', () => {
 
   it('sem janelas e com cota esgotada: sem cota; sem nada: indefinido', () => {
     expect(usageFromAppServer({ rateLimits: { primary: null, secondary: null, rateLimitReachedType: 'workspace_owner_credits_depleted' } }, NOW)).toEqual({
-      usage: { source: 'codex', fetchedAt: NOW, noQuota: true },
+      usage: { source: 'codex', via: 'app-server', fetchedAt: NOW, noQuota: true },
     });
     expect(usageFromAppServer({ rateLimits: { primary: null, secondary: null } }, NOW)).toBeUndefined();
     expect(usageFromAppServer(null, NOW)).toBeUndefined();
   });
 
-  it('lê o socket: initialize e depois account/rateLimits/read', async () => {
-    const socketPath = await fakeAppServer(fixture());
+  it('lê o socket: initialize, initialized e depois account/rateLimits/read', async () => {
+    const methods: string[] = [];
+    const socketPath = await fakeAppServer(fixture(), methods);
     const live = await readCodexAppServerUsage({ socketPath, now: NOW });
     expect(live?.usage.fiveHour?.utilization).toBe(12);
     expect(live?.usage.sevenDay?.utilization).toBe(41);
+    expect(live?.usage.via).toBe('app-server');
     expect(live?.plan).toBe('Plus');
+    expect(methods).toEqual(['initialize', 'initialized', 'account/rateLimits/read']);
   });
 
   it('socket ausente ou erro do app-server: undefined, sem exceção', async () => {
@@ -208,6 +263,7 @@ describe('uso do Codex pelo app-server local', () => {
       watch: false,
       pollMs: 60_000,
       liveUsageMs: 20,
+      codexBin: null,
     });
     cleanups.push(() => {
       source.stop();
@@ -216,6 +272,69 @@ describe('uso do Codex pelo app-server local', () => {
     source.start();
     await new Promise((ok) => setTimeout(ok, 200));
     const acc = accounts.list(new Map())[0];
-    expect(acc).toMatchObject({ id: '.codex', plan: 'Plus', usageStatus: 'ok', usage: { source: 'codex', fiveHour: { utilization: 12 }, sevenDay: { utilization: 41 } } });
+    expect(acc).toMatchObject({ id: '.codex', plan: 'Plus', usageStatus: 'ok', usage: { source: 'codex', via: 'app-server', fiveHour: { utilization: 12 }, sevenDay: { utilization: 41 } } });
+  });
+
+  it('readCodexCliUsage: mantém stdin aberto, envia initialized + CODEX_HOME e trata erro/timeout', async () => {
+    const capDir = mkdtempSync(join(tmpdir(), 'hb-codex-cap-'));
+    const captureFile = join(capDir, 'cap.json');
+    cleanups.push(() => rmSync(capDir, { recursive: true, force: true }));
+    const bin = fakeCodexCli(fixture(), { delayMs: 15, requireOpenStdin: true, captureFile });
+    const live = await readCodexCliUsage({ bin, codexHome: '/tmp/meu-codex-home', now: NOW });
+    expect(live?.usage).toMatchObject({ source: 'codex', via: 'app-server', fetchedAt: NOW, fiveHour: { utilization: 12 }, sevenDay: { utilization: 41 } });
+    expect(live?.plan).toBe('Plus');
+    const { readFileSync } = await import('node:fs');
+    expect(JSON.parse(readFileSync(captureFile, 'utf8'))).toEqual({ codexHome: '/tmp/meu-codex-home', sawInitialized: true });
+
+    const errBin = fakeCodexCli(null);
+    expect(await readCodexCliUsage({ bin: errBin, codexHome: '/tmp/x', now: NOW })).toBeUndefined();
+    const slowBin = fakeCodexCli(fixture(), { delayMs: 400 });
+    expect(await readCodexCliUsage({ bin: slowBin, codexHome: '/tmp/x', now: NOW, timeoutMs: 80 })).toBeUndefined();
+    expect(await readCodexCliUsage({ bin: join(tmpdir(), 'codex-inexistente'), codexHome: '/tmp/x', now: NOW })).toBeUndefined();
+  });
+
+  it('sem socket Unix, a fonte do Codex consulta codex app-server por stdio e substitui rollout antigo', async () => {
+    const bin = fakeCodexCli(fixture(), { delayMs: 10, requireOpenStdin: true });
+    const codex = codexHome('.codex');
+    cleanups.push(codex.cleanup);
+    const oldAt = NOW - 48 * 3600_000;
+    codex.rollout(threadId(9), [
+      R.meta(threadId(9), { at: oldAt }),
+      R.tokens({ input: 1, output: 1, at: oldAt, rateLimits: { primary: { used: 61 }, secondary: { used: 61 }, plan: 'plus' } }),
+    ], { mtime: oldAt });
+    const now = () => NOW;
+    const accounts = new AccountsService({ dirs: [], home: codex.home, env: {}, now, onChange: () => {} });
+    const office = new Office({
+      names: new NameStore(null),
+      version: 'teste',
+      startedAt: NOW,
+      accounts: (s) => accounts.list(s),
+      sources: () => [],
+      accountName: (id) => accounts.find(id)?.detected.name,
+      now,
+    });
+    const source = new CodexSource({
+      accounts,
+      office,
+      dirs: [codex.dir],
+      env: {},
+      home: codex.home,
+      now,
+      watch: false,
+      pollMs: 60_000,
+      liveUsageMs: 50,
+      cliUsageMs: 50,
+      codexBin: bin,
+    });
+    cleanups.push(() => source.stop());
+    source.start();
+    await new Promise((ok) => setTimeout(ok, 250));
+    const acc = accounts.list(new Map())[0];
+    expect(acc).toMatchObject({
+      id: '.codex',
+      plan: 'Plus',
+      usageStatus: 'ok',
+      usage: { source: 'codex', via: 'app-server', fetchedAt: NOW, fiveHour: { utilization: 12 }, sevenDay: { utilization: 41 } },
+    });
   });
 });

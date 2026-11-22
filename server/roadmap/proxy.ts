@@ -5,9 +5,8 @@
 // de mutação passa por aqui: quem move o roadmap é o agente, dentro do pipeline.
 import http from 'node:http';
 import https from 'node:https';
+import tls from 'node:tls';
 import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tr } from '../../shared/i18n';
 import { sendJson } from '../http/app';
@@ -39,35 +38,39 @@ export interface RoadmapStatus {
 }
 
 export interface RoadmapProxyOptions {
-  config: RoadmapConfig;
+  config: RoadmapConfig | (() => RoadmapConfig);
   /** Porta local com Host loopback (o mesmo critério do terminal e do World). */
   isLocal(req: IncomingMessage): boolean;
+  /** CA adicional opcional (equivalente a NODE_EXTRA_CA_CERTS quando carregado do `.env` após o boot do Node). */
+  extraCaPath?: string | (() => string | undefined);
 }
 
 function errorBody(code: string, message: string, retryable = false): Record<string, unknown> {
   return { error: { code, message, retryable } };
 }
 
-function currentToken(config: RoadmapConfig): string | undefined {
-  if (config.token) return config.token;
-  const base = process.env.HABBLAUD_DATA_DIR?.trim() || join(homedir(), '.habblaud');
+function extraCaOption(caPath: string | undefined): string[] | undefined {
+  const clean = caPath?.trim();
+  if (!clean || !Array.isArray(tls.rootCertificates) || tls.rootCertificates.length === 0) return undefined;
   try {
-    const value = readFileSync(join(base, 'roadmap-token'), 'utf8').trim();
-    return value || undefined;
+    const pem = readFileSync(clean, 'utf8').trim();
+    if (!pem) return undefined;
+    return [...tls.rootCertificates, pem];
   } catch {
     return undefined;
   }
 }
 
 function statusOf(config: RoadmapConfig, local: boolean): RoadmapStatus {
-  const token = currentToken(config);
-  const configured = Boolean(config.url && token);
-  const available = local && !!config.url && configured;
+  const configured = Boolean(config.url && config.token);
+  const available = local && config.enabled && configured;
   const reason = !local
     ? tr('o roadmap só abre pelo próprio computador (http://localhost)')
-    : !token
-      ? (config.warning ?? tr('HABBLAUD_ROADMAP_TOKEN não definido: o roadmap fica desligado até o token do Habblaud ser configurado'))
-      : config.warning ?? (!config.enabled ? tr('roadmap desligado (HABBLAUD_ROADMAP=0)') : undefined);
+    : !config.enabled
+      ? (config.warning ?? tr('roadmap desligado (HABBLAUD_ROADMAP=0)'))
+      : !config.token
+        ? (config.warning ?? tr('HABBLAUD_ROADMAP_TOKEN não definido: o roadmap fica desligado até o token do Habblaud ser configurado'))
+        : config.warning;
   return {
     enabled: config.enabled,
     configured,
@@ -122,29 +125,30 @@ async function upstreamJson(
   token: string,
   targetPath: string,
   search: string,
+  ca?: string[],
 ): Promise<{ status: number; body: Buffer }> {
   const target = new URL(`${targetPath}${search}`, baseUrl);
-  const client = target.protocol === 'https:' ? https : http;
+  const secure = target.protocol === 'https:';
   return new Promise((resolve, reject) => {
-    const req = client.request(
-      target,
-      { method: 'GET', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Cache-Control': 'no-store' } },
-      (res) => {
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on('data', (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > MAX_BODY) {
-            res.destroy();
-            reject(new Error('too_large'));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        res.on('end', () => resolve({ status: res.statusCode ?? 502, body: Buffer.concat(chunks) }));
-        res.on('error', reject);
-      },
-    );
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Cache-Control': 'no-store' };
+    const onResponse = (res: IncomingMessage) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > MAX_BODY) {
+          res.destroy();
+          reject(new Error('too_large'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      res.on('end', () => resolve({ status: res.statusCode ?? 502, body: Buffer.concat(chunks) }));
+      res.on('error', reject);
+    };
+    const req = secure
+      ? https.request(target, { method: 'GET', headers, ...(ca ? { ca } : {}) }, onResponse)
+      : http.request(target, { method: 'GET', headers }, onResponse);
     req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error('timeout')));
     req.on('error', reject);
     req.end();
@@ -186,8 +190,12 @@ function sseHeaders(upstream: IncomingMessage): Record<string, string> {
  * explicar o motivo; as demais rotas só existem com configuração válida e acesso local.
  */
 export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingMessage, res: ServerResponse, url: URL) => void {
-  const { config, isLocal } = opts;
+  const { isLocal } = opts;
+  const readConfig = typeof opts.config === 'function' ? opts.config : () => opts.config as RoadmapConfig;
+  const readCaPath = typeof opts.extraCaPath === 'function' ? opts.extraCaPath : () => opts.extraCaPath as string | undefined;
+
   return (req, res, url) => {
+    const config = readConfig();
     const method = req.method ?? 'GET';
     const local = isLocal(req);
     if (url.pathname === `${PREFIX}/status`) {
@@ -205,10 +213,19 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       sendJson(res, 403, errorBody('local_only', tr('o roadmap só abre pelo próprio computador (http://localhost)')));
       return;
     }
-    const token = currentToken(config);
-    if (!config.url || !token) {
+    if (!config.enabled || !config.url || !config.token) {
       req.resume();
-      sendJson(res, 503, errorBody('roadmap_disabled', config.warning ?? tr('HABBLAUD_ROADMAP_TOKEN não definido: o roadmap fica desligado até o token do Habblaud ser configurado')));
+      sendJson(
+        res,
+        503,
+        errorBody(
+          'roadmap_disabled',
+          config.warning ??
+            (config.enabled
+              ? tr('HABBLAUD_ROADMAP_TOKEN não definido: o roadmap fica desligado até o token do Habblaud ser configurado')
+              : tr('roadmap desligado (HABBLAUD_ROADMAP=0)')),
+        ),
+      );
       return;
     }
     if (method !== 'GET' && method !== 'POST') {
@@ -229,9 +246,10 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       sendJson(res, 404, errorBody('not_found', tr('roadmap fora da lista permitida')));
       return;
     }
+    const ca = extraCaOption(readCaPath());
     if (config.ids?.length && method === 'GET' && (targetPath === '/api/roadmaps' || targetPath === '/api/agent/sessions')) {
       const listPath = targetPath;
-      void upstreamJson(config.url, token, listPath, url.search)
+      void upstreamJson(config.url, config.token, listPath, url.search, ca)
         .then((result) =>
           filteredList(res, result, (data) => {
             if (listPath === '/api/roadmaps' && Array.isArray(data.roadmaps)) {
@@ -250,7 +268,7 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
         });
       return;
     }
-    void forward(req, res, url, targetPath, config.url, token, method === 'POST').catch((error: unknown) => {
+    void forward(req, res, url, targetPath, config.url, config.token, method === 'POST', ca).catch((error: unknown) => {
       if (res.headersSent) return void res.destroy();
       const message = error instanceof Error && error.message === 'too_large' ? tr('corpo grande demais') : tr('o Hermes Pipeline não respondeu');
       sendJson(res, error instanceof Error && error.message === 'too_large' ? 413 : 502, errorBody('pipeline_unavailable', message, true));
@@ -266,6 +284,7 @@ async function forward(
   baseUrl: string,
   token: string,
   hasBody: boolean,
+  ca?: string[],
 ): Promise<void> {
   const body = hasBody ? await readBody(req) : undefined;
   const target = new URL(`${targetPath}${url.search}`, baseUrl);
@@ -280,25 +299,24 @@ async function forward(
   if (typeof req.headers['last-event-id'] === 'string') headers['Last-Event-ID'] = req.headers['last-event-id'];
   if (body) headers['Content-Length'] = String(body.length);
 
-  const client = target.protocol === 'https:' ? https : http;
+  const secure = target.protocol === 'https:';
   await new Promise<void>((resolve, reject) => {
-    const upstream = client.request(
-      target,
-      { method: req.method, headers },
-      (response) => {
-        if (isEvent) {
-          res.writeHead(response.statusCode ?? 502, sseHeaders(response));
-          res.flushHeaders();
-        } else {
-          res.writeHead(response.statusCode ?? 502, jsonHeaders(response));
-        }
-        response.on('error', () => {
-          if (!res.writableEnded) res.destroy();
-        });
-        response.pipe(res);
-        response.on('end', resolve);
-      },
-    );
+    const onResponse = (response: IncomingMessage) => {
+      if (isEvent) {
+        res.writeHead(response.statusCode ?? 502, sseHeaders(response));
+        res.flushHeaders();
+      } else {
+        res.writeHead(response.statusCode ?? 502, jsonHeaders(response));
+      }
+      response.on('error', () => {
+        if (!res.writableEnded) res.destroy();
+      });
+      response.pipe(res);
+      response.on('end', resolve);
+    };
+    const upstream = secure
+      ? https.request(target, { method: req.method, headers, ...(ca ? { ca } : {}) }, onResponse)
+      : http.request(target, { method: req.method, headers }, onResponse);
     upstream.setTimeout(isEvent ? 0 : TIMEOUT_MS, () => upstream.destroy(new Error('timeout')));
     upstream.on('error', reject);
     res.on('close', () => upstream.destroy());

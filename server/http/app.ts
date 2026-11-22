@@ -107,7 +107,7 @@ export interface ApiDeps {
    * handler responde o status mesmo desligado; `roadmapAvailable` diz se a página pode abrir o recurso.
    */
   roadmap?: (req: IncomingMessage, res: ServerResponse, url: URL) => void;
-  roadmapAvailable?: boolean;
+  roadmapAvailable?: boolean | (() => boolean);
 }
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
@@ -415,6 +415,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       if (!isRead) methodNotAllowed(res, 'GET');
       else {
         const remote = isRemote(req);
+        const roadmapOk = typeof deps.roadmapAvailable === 'function' ? deps.roadmapAvailable() : !!deps.roadmapAvailable;
         const access: AccessInfo = {
           remote,
           local: !remote && isLoopbackHost(req.headers.host),
@@ -423,7 +424,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           terminal: !!terminals && trusted(req, 'terminal'),
           spawn: !!deps.spawn && trusted(req, 'spawn'),
           world: !!deps.world && !!deps.terminal && !remote && isLoopbackHost(req.headers.host),
-          roadmap: !!deps.roadmapAvailable && !remote && isLoopbackHost(req.headers.host),
+          roadmap: roadmapOk && !remote && isLoopbackHost(req.headers.host),
         };
         sendJson(res, 200, access);
       }

@@ -7,7 +7,7 @@
 // Conta do Codex: os números vêm dos arquivos de sessão dele, que só se renovam enquanto alguma sessão roda; por isso
 // a idade ("há 12 min") fica sempre à mostra. Sem cota nem créditos ("sem cota") nunca vira 0%. Não há o que
 // instalar para o uso: "Como funciona" abre a ajuda na seção do Codex. Sem Opus/Sonnet nem e-mail (só o plano).
-import type { AccountInfo } from '../../../shared/types';
+import type { AccountInfo, UsageDetail } from '../../../shared/types';
 import { filterAccounts, HERMES_GROUP } from './account-filter';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
@@ -26,9 +26,10 @@ export const SOURCE_LABEL: Record<NonNullable<AccountInfo['usage']>['source'], s
   antigravity: tr('limites do Antigravity'),
 };
 
-/** Origem para mostrar: o arquivo ao vivo pode ter sido gravado pelo mod do Habblaud ou pelo tap. */
+/** Origem para mostrar: o arquivo ao vivo pode ter sido gravado pelo mod/tap ou lido do app-server do Codex. */
 export function sourceLabel(u: NonNullable<AccountInfo['usage']>): string {
   if (u.source === 'statusline' && u.via === 'mod') return tr('ao vivo (mod do Habblaud)');
+  if (u.source === 'codex' && u.via === 'app-server') return tr('ao vivo (app-server do Codex)');
   return SOURCE_LABEL[u.source] ?? u.source;
 }
 
@@ -55,6 +56,8 @@ export function richText(text: string): Node[] {
 
 interface Meter {
   el: HTMLElement;
+  labelLong: HTMLElement;
+  labelShort: HTMLElement;
   bar: HTMLElement;
   pct: HTMLElement;
   reset: HTMLElement;
@@ -71,9 +74,11 @@ interface CardRefs {
   state: HTMLElement;
   stateText: HTMLElement;
   meters: HTMLElement;
+  detailMeters: HTMLElement;
   five: Meter;
   week: Meter;
   month: Meter;
+  details: Meter[];
   msg: HTMLElement;
   msgLong: HTMLElement;
   msgShort: HTMLElement;
@@ -95,14 +100,33 @@ function createMeter(long: string, short: string, title: string): Meter {
   const resetLong = h('span', { class: 'ui-meter__reset-long' });
   const resetShort = h('span', { class: 'ui-meter__reset-short' });
   const reset = h('span', { class: 'ui-meter__reset' }, resetLong, resetShort);
-  const label = h(
-    'span',
-    { class: 'ui-meter__label' },
-    h('span', { class: 'ui-meter__label-long', text: long }),
-    h('span', { class: 'ui-meter__label-short', text: short, attrs: { 'aria-hidden': 'true' } }),
-  );
+  const labelLong = h('span', { class: 'ui-meter__label-long', text: long });
+  const labelShort = h('span', { class: 'ui-meter__label-short', text: short, attrs: { 'aria-hidden': 'true' } });
+  const label = h('span', { class: 'ui-meter__label' }, labelLong, labelShort);
   const el = h('div', { class: 'ui-meter', role: 'img', attrs: { 'aria-label': title } }, label, bar, pct, reset);
-  return { el, bar, pct, reset, resetLong, resetShort };
+  return { el, labelLong, labelShort, bar, pct, reset, resetLong, resetShort };
+}
+
+/** Rótulos curto/longo e duração da janela para um limite nomeado (ex.: Antigravity). */
+export function detailMeterMeta(detail: UsageDetail): { long: string; short: string; title: string; windowMs: number } {
+  const win =
+    detail.window ??
+    (/\b5\s*h\b/i.test(detail.label)
+      ? '5h'
+      : /\b(?:mês|mes|month|monthly)\b/i.test(detail.label)
+        ? 'monthly'
+        : 'weekly');
+  const windowMs = win === '5h' ? FIVE_HOURS_MS : win === 'monthly' ? MONTH_MS : WEEK_MS;
+  const winLong = win === '5h' ? '5h' : win === 'monthly' ? tr('Mês') : tr('Sem.');
+  const rawGroup = (detail.group ?? detail.label.split(' · ')[0] ?? '').trim();
+  const group = rawGroup.replace(/\s+models$/i, '').replace(/^Gemini\s+\d+(?:\.\d+)?\s+/i, '').trim() || rawGroup;
+  const abbr = group.length > 4 ? `${group.slice(0, 3)}.` : group;
+  return {
+    long: group ? `${group} ${winLong}` : winLong,
+    short: abbr ? `${abbr} ${winLong}` : winLong,
+    title: detail.label,
+    windowMs,
+  };
 }
 
 function updateMeter(m: Meter, view: UsageWindowView | null, windowName: string): void {
@@ -159,7 +183,17 @@ export function createUsageSetup(): HTMLElement {
 export type CardState = 'ok' | 'stale' | 'empty' | 'noquota';
 
 function hasWindows(a: Pick<AccountInfo, 'usage'>): boolean {
-  return !!a.usage && !!(a.usage.fiveHour || a.usage.sevenDay || a.usage.monthly);
+  return !!a.usage && !!(a.usage.fiveHour || a.usage.sevenDay || a.usage.monthly || a.usage.details?.length);
+}
+
+function cardMeterRows(a: AccountInfo): number {
+  const n = a.usage?.details?.length ?? 0;
+  if (n > 0) return n;
+  let rows = 0;
+  if (a.usage?.fiveHour) rows++;
+  if (a.usage?.sevenDay) rows++;
+  if (a.usage?.monthly) rows++;
+  return rows;
 }
 
 /** Estado efetivo do cartão. */
@@ -183,7 +217,7 @@ export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
   if (isOpenCode(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'OpenCode';
-  if (isAntigravity(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Antigravity';
+  if (isAntigravity(a)) return a.plan && a.plan !== 'Antigravity' ? tr('plano {0}', [a.plan]) : 'Google';
   if (isHermes(a) && a.id === HERMES_GROUP) return '';
   return a.configDir;
 }
@@ -205,6 +239,8 @@ export function codexUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'p
   const age = u ? relativeTime(u.fetchedAt, now) : '';
   if (state === 'noquota')
     return tr('Na última leitura ({0}), a conta estava sem cota nem créditos para usar (ex.: os créditos do workspace acabaram). Não é 0%: o Codex não informou as janelas. Os números voltam com a próxima sessão.', [age]);
+  if (u?.via === 'app-server')
+    return tr('Limites lidos ao vivo pelo app-server local do Codex (última leitura: {0}).', [age]);
   return tr('O Codex só grava o uso enquanto alguma sessão roda: estes números são da última leitura ({0}).', [age]);
 }
 
@@ -222,7 +258,7 @@ export function antigravityUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus
   if (!isAntigravity(a)) return '';
   if (cardState(a) === 'empty') return tr('Não há o que instalar: o uso vem do próprio CLI do Antigravity (`agy`).');
   const age = a.usage ? relativeTime(a.usage.fetchedAt, now) : '';
-  return tr('O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon); o cartão usa a pior janela e a dica lista cada grupo. Estes números são da última leitura ({0}).', [age]);
+  return tr('O Antigravity exibe apenas os modelos do Google (Gemini e Argon), sem modelos de terceiros. Estes números são da última leitura ({0}).', [age]);
 }
 
 /** Explicação do cartão de uma conta do Hermes (dica); '' nas outras. O Hermes não informa limites de plano. */
@@ -253,12 +289,16 @@ export class UsageCards {
     const shown = filterAccounts(accounts);
     this.list.sync(shown);
     this.el.classList.toggle('is-empty', shown.length === 0);
-    // O cartão com o limite mensal ganha uma linha a mais; a barra cresce junto (styles.css).
-    this.ctx.root.classList.toggle('has-monthly', shown.some((a) => !!a.usage?.monthly));
+    const maxRows = shown.reduce((max, a) => Math.max(max, cardMeterRows(a)), 0);
+    // O cartão com 3 ou 4 linhas verticais faz a barra crescer junto (styles.css).
+    this.ctx.root.classList.toggle('has-monthly', maxRows >= 3);
+    this.ctx.root.classList.toggle('has-usage-4', maxRows >= 4);
     setStyleVar(this.el, '--count', String(shown.length));
-    // Medir força o layout da página, e o render roda a cada quadro no replay: só quando as contas mudam (a largura da
-    // janela fica com o ResizeObserver do construtor).
-    const key = shown.map((a) => a.id).join('|');
+    // Medir força o layout da página, e o render roda a cada quadro no replay: só quando as contas ou seu formato mudam (a
+    // largura da janela fica com o ResizeObserver do construtor).
+    const key = shown
+      .map((a) => `${a.id}:${a.usage?.details?.length ?? 0}:${isHermes(a) && cardState(a) === 'empty' ? 'c' : ''}`)
+      .join('|');
     if (key !== this.fitKey) {
       this.fitKey = key;
       this.fit();
@@ -314,6 +354,7 @@ export class UsageCards {
     const month = createMeter(tr('Mês'), tr('Mês'), tr('Limite mensal'));
     month.el.hidden = true;
     const meters = h('div', { class: 'ui-usage-card__meters' }, five.el, week.el, month.el);
+    const detailMeters = h('div', { class: 'ui-usage-card__meters ui-usage-card__meters--details', hidden: true });
     const msgLong = h('span', { class: 'ui-usage-card__msg-long', text: tr('sem dados de uso') });
     const msgShort = h('span', { class: 'ui-usage-card__msg-short', text: tr('sem dados'), attrs: { 'aria-hidden': 'true' } });
     const howLong = h('span', { class: 'ui-usage-card__how-long', text: tr('Como ativar') });
@@ -340,7 +381,7 @@ export class UsageCards {
       { class: 'ui-usage-card', tabIndex: 0, attrs: { 'aria-describedby': tipId } },
       chip,
       flag,
-      h('div', { class: 'ui-usage-card__body' }, h('div', { class: 'ui-usage-card__head' }, name, prov, email, state), meters, msg),
+      h('div', { class: 'ui-usage-card__body' }, h('div', { class: 'ui-usage-card__head' }, name, prov, email, state), meters, detailMeters, msg),
       tip,
     );
     this.refs.set(card, {
@@ -352,9 +393,11 @@ export class UsageCards {
       state,
       stateText,
       meters,
+      detailMeters,
       five,
       week,
       month,
+      details: [],
       msg,
       msgLong,
       msgShort,
@@ -391,10 +434,39 @@ export class UsageCards {
     const five = usage ? usageWindowView(usage.fiveHour, usage.fetchedAt, now, FIVE_HOURS_MS) : null;
     const week = usage ? usageWindowView(usage.sevenDay, usage.fetchedAt, now, WEEK_MS) : null;
     const month = usage ? usageWindowView(usage.monthly, usage.fetchedAt, now, MONTH_MS) : null;
-    const showMeters = hasWindows(a);
+    const details = usage?.details ?? [];
+    const showDetails = state !== 'noquota' && details.length > 0;
+    const isCompact = hermes && state === 'empty';
+    card.classList.toggle('is-details', showDetails);
+    card.classList.toggle('is-compact', isCompact);
+    const showMeters = hasWindows(a) && !showDetails;
     setHidden(r.meters, !showMeters);
+    setHidden(r.detailMeters, !showDetails);
     setHidden(r.month.el, !usage?.monthly);
-    if (usage && showMeters) {
+    if (usage && showDetails) {
+      while (r.details.length < details.length) {
+        const m = createMeter('', '', '');
+        r.details.push(m);
+        r.detailMeters.append(m.el);
+      }
+      while (r.details.length > details.length) {
+        r.details.pop()!.el.remove();
+      }
+      r.detailMeters.classList.toggle('is-dim', state !== 'ok');
+      details.forEach((detail, i) => {
+        const m = r.details[i];
+        const meta = detailMeterMeta(detail);
+        setText(m.labelLong, meta.long);
+        setText(m.labelShort, meta.short);
+        const view = usageWindowView(
+          { utilization: detail.utilization, ...(detail.resetsAt !== undefined ? { resetsAt: detail.resetsAt } : {}) },
+          usage.fetchedAt,
+          now,
+          meta.windowMs,
+        );
+        updateMeter(m, view, meta.title);
+      });
+    } else if (usage && showMeters) {
       updateMeter(r.five, five, tr('Sessão de 5 horas'));
       updateMeter(r.week, week, tr('Semana'));
       if (usage.monthly) updateMeter(r.month, month, tr('Mês'));
@@ -414,11 +486,13 @@ export class UsageCards {
       setTitle(
         r.state,
         codex
-          ? tr('Atualizado {0}: o Codex só grava o uso enquanto alguma sessão roda.', [age])
+          ? usage.via === 'app-server'
+            ? tr('Atualizado {0}: limites lidos ao vivo pelo app-server do Codex.', [age])
+            : tr('Atualizado {0}: o Codex só grava o uso enquanto alguma sessão roda.', [age])
           : opencode
             ? tr('Atualizado {0}: o OpenCode informa os limites do plano aberto.', [age])
             : antigravity
-              ? tr('Atualizado {0}: o Antigravity informa os grupos do plano.', [age])
+              ? tr('Atualizado {0}: limites dos modelos Google no Antigravity.', [age])
               : tr('Números de {0}: podem não refletir o uso atual.', [age]),
       );
     }
@@ -466,24 +540,33 @@ export class UsageCards {
     const antigravity = isAntigravity(a);
     const toolCard = codex || opencode || hermes || antigravity;
     const tool = codex ? 'Codex' : opencode ? 'OpenCode' : hermes ? 'Hermes' : antigravity ? 'Antigravity' : '';
-    setText(r.tipTitle, `${a.name}${tool && !new RegExp(tool, 'i').test(a.name) ? ` · ${tool}` : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
+    const showPlan = !!a.plan && !(antigravity && a.plan === 'Antigravity');
+    setText(r.tipTitle, `${a.name}${tool && !new RegExp(tool, 'i').test(a.name) ? ` · ${tool}` : ''}${showPlan ? tr(' · plano {0}', [a.plan!]) : ''}`);
     const rows: [string, string][] = [];
     if (tool) rows.push([tr('Ferramenta'), tool]);
     if (a.email) rows.push(['E-mail', a.email]);
     if (a.organization) rows.push([tr('Organização'), a.organization]);
-    if (a.plan) rows.push([tr('Plano'), a.plan]);
+    if (showPlan) rows.push([tr('Plano'), a.plan!]);
     if (a.id !== HERMES_GROUP) rows.push([tr('Pasta'), a.configDir]);
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
     if (u && (u.fiveHour || u.sevenDay || u.monthly || u.details?.length)) {
-      rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
-      rows.push([tr('Semana'), week?.summary ?? '—']);
-      if (u.monthly) rows.push([tr('Mês'), month?.summary ?? '—']);
-      // Antigravity tem vários grupos (Gemini, Claude/GPT, Argon): o cartão mostra o pior 5 h/semana e a dica lista
-      // cada grupo com o seu reinício.
-      for (const detail of u.details ?? []) {
-        const view = usageWindowView({ utilization: detail.utilization, ...(detail.resetsAt !== undefined ? { resetsAt: detail.resetsAt } : {}) }, u.fetchedAt, now, WEEK_MS);
-        rows.push([detail.label, view?.summary ?? '—']);
+      if (u.details?.length) {
+        // Antigravity: lista cada grupo Google com o seu reinício e duração de janela.
+        for (const detail of u.details) {
+          const meta = detailMeterMeta(detail);
+          const view = usageWindowView(
+            { utilization: detail.utilization, ...(detail.resetsAt !== undefined ? { resetsAt: detail.resetsAt } : {}) },
+            u.fetchedAt,
+            now,
+            meta.windowMs,
+          );
+          rows.push([detail.label, view?.summary ?? '—']);
+        }
+      } else {
+        rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
+        rows.push([tr('Semana'), week?.summary ?? '—']);
+        if (u.monthly) rows.push([tr('Mês'), month?.summary ?? '—']);
       }
       // Opus e Sonnet são janelas do Claude: no Codex/OpenCode/Hermes/Antigravity não existem.
       const opus = toolCard ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);

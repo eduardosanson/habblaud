@@ -1005,6 +1005,31 @@
   cursor: default;
 }
 
+.ui-usage-card.is-details {
+  width: 340px;
+  min-width: 220px;
+}
+
+.ui-usage-card.is-compact {
+  width: auto;
+  min-width: 130px;
+  flex: 0 0 auto;
+}
+
+.ui-usage-card.is-compact .ui-usage-card__msg {
+  height: auto;
+  min-height: 18px;
+  font-size: 11px;
+}
+
+.ui-usage-card.is-compact .ui-usage-card__msg-long {
+  display: none;
+}
+
+.ui-usage-card.is-compact .ui-usage-card__msg-short {
+  display: inline;
+}
+
 .ui-usage-card:hover,
 .ui-usage-card:focus-visible,
 .ui-usage-card:focus-within {
@@ -1114,6 +1139,13 @@
   row-gap: 1px;
 }
 
+/* Antigravity: linhas empilhadas (uma embaixo da outra) com coluna de rótulo mais larga. */
+.ui-usage-card__meters--details {
+  grid-template-columns: 74px minmax(16px, 1fr) 32px auto;
+  column-gap: 6px;
+  row-gap: 1px;
+}
+
 /* Números antigos: barras e percentuais em cinza (legíveis), sem apagar o bloco inteiro. */
 .ui-usage-card__meters.is-dim .ui-meter {
   --lv: #a3abbd;
@@ -1214,35 +1246,63 @@
 }
 
 @container usage-card (max-width: 206px) {
-  .ui-usage-card__meters {
+  .ui-usage-card__meters:not(.ui-usage-card__meters--details) {
     grid-template-columns: 30px minmax(14px, 1fr) 30px auto;
     column-gap: 5px;
   }
 
-  .ui-meter__label-long,
-  .ui-meter__reset-long {
+  .ui-usage-card__meters:not(.ui-usage-card__meters--details) .ui-meter__label-long,
+  .ui-usage-card__meters:not(.ui-usage-card__meters--details) .ui-meter__reset-long {
     display: none;
   }
 
-  .ui-meter__label-short,
-  .ui-meter__reset-short {
+  .ui-usage-card__meters:not(.ui-usage-card__meters--details) .ui-meter__label-short,
+  .ui-usage-card__meters:not(.ui-usage-card__meters--details) .ui-meter__reset-short {
     display: inline;
   }
 }
 
 /* Cartão minúsculo (4 ou mais contas em telas médias): sem a coluna do reinício (fica na dica). */
 @container usage-card (max-width: 123px) {
-  .ui-usage-card__meters {
+  .ui-usage-card__meters:not(.ui-usage-card__meters--details) {
     grid-template-columns: 24px minmax(8px, 1fr) 30px;
     column-gap: 4px;
   }
 
-  .ui-meter__reset {
+  .ui-usage-card__meters:not(.ui-usage-card__meters--details) .ui-meter__reset {
     display: none;
   }
 
   /* A idade vira só o relógio (o texto continua na dica). */
   .ui-usage-card__state > span:last-child {
+    display: none;
+  }
+}
+
+@container usage-card (max-width: 245px) {
+  .ui-usage-card__meters--details {
+    grid-template-columns: 58px minmax(14px, 1fr) 30px auto;
+    column-gap: 5px;
+  }
+
+  .ui-usage-card__meters--details .ui-meter__label-long,
+  .ui-usage-card__meters--details .ui-meter__reset-long {
+    display: none;
+  }
+
+  .ui-usage-card__meters--details .ui-meter__label-short,
+  .ui-usage-card__meters--details .ui-meter__reset-short {
+    display: inline;
+  }
+}
+
+@container usage-card (max-width: 155px) {
+  .ui-usage-card__meters--details {
+    grid-template-columns: 52px minmax(10px, 1fr) 28px;
+    column-gap: 4px;
+  }
+
+  .ui-usage-card__meters--details .ui-meter__reset {
     display: none;
   }
 }
@@ -1314,7 +1374,7 @@
 
 /* Cartão minúsculo (3 contas no celular): fica só o botão, que já diz que falta ativar. */
 @container usage-card (max-width: 112px) {
-  .ui-usage-card__msg-text {
+  .ui-usage-card:not(.is-compact) .ui-usage-card__msg-text {
     display: none;
   }
 
@@ -4056,42 +4116,37 @@
     display: none;
   }
 
-  /* 3 ou mais contas: os cartões de uso precisam do espaço dos contadores (o escritório mostra os números). */
-  .ui-topbar:has(.ui-usage-card:nth-child(3)) :is(.ui-counter--agents, .ui-counter--working) {
+  /* 3 ou mais contas na mesma linha: os cartões de uso precisam do espaço dos contadores (o escritório mostra os números). */
+  .ui-root:not(.has-usage-row) .ui-topbar:has(.ui-usage-card:nth-child(3)) :is(.ui-counter--agents, .ui-counter--working) {
     display: none;
   }
 }
 
 @media (max-width: 1700px) {
-  .ui-topbar:has(.ui-usage-card:nth-child(4)) :is(.ui-counter--rooms, .ui-counter--agents, .ui-counter--working, .ui-counter--subagents) {
+  .ui-root:not(.has-usage-row) .ui-topbar:has(.ui-usage-card:nth-child(4)) :is(.ui-counter--rooms, .ui-counter--agents, .ui-counter--working, .ui-counter--subagents) {
     display: none;
   }
 
-  .ui-topbar:has(.ui-usage-card:nth-child(3)) :is(.ui-counter--rooms, .ui-counter--subagents) {
+  .ui-root:not(.has-usage-row) .ui-topbar:has(.ui-usage-card:nth-child(3)) :is(.ui-counter--rooms, .ui-counter--subagents) {
     display: none;
   }
 }
 
 @media (max-width: 1500px) {
-  .ui-topbar:has(.ui-usage-card:nth-child(4)) .ui-brand__name {
+  .ui-root:not(.has-usage-row) .ui-topbar:has(.ui-usage-card:nth-child(4)) .ui-brand__name {
     display: none;
   }
 }
 
-/* 4 ou mais contas (ex.: as do Claude Code, a do Codex e as do demo): os cartões podem estreitar até perder a coluna
-   do reinício (ela continua na dica de cada cartão) e o zoom fica na rolagem do mouse e nos atalhos + / −. */
+/* 4 ou mais contas na mesma linha: libera espaço nos controles de zoom quando a barra tem 1 linha. */
 @media (max-width: 1700px) {
-  .ui-topbar:has(.ui-usage-card:nth-child(4)) .ui-usage-card {
-    min-width: 128px;
-  }
-
-  .ui-topbar:has(.ui-usage-card:nth-child(4)) .ui-topbar__right .ui-btn-group:first-child .ui-icon-btn:not(:first-child) {
+  .ui-root:not(.has-usage-row) .ui-topbar:has(.ui-usage-card:nth-child(4)) .ui-topbar__right .ui-btn-group:first-child .ui-icon-btn:not(:first-child) {
     display: none;
   }
 }
 
 @media (max-width: 1140px) {
-  .ui-topbar:has(.ui-usage-card:nth-child(3)) .ui-brand__name {
+  .ui-root:not(.has-usage-row) .ui-topbar:has(.ui-usage-card:nth-child(3)) .ui-brand__name {
     display: none;
   }
 }
@@ -4122,6 +4177,26 @@
     padding: 3px 2px;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+
+  .ui-root.has-usage-row .ui-usage-card {
+    width: auto;
+    flex: 1 1 210px;
+    min-width: 200px;
+    max-width: 420px;
+  }
+
+  .ui-root.has-usage-row .ui-usage-card.is-details {
+    flex: 1.15 1 230px;
+    min-width: 220px;
+    max-width: 480px;
+  }
+
+  .ui-root.has-usage-row .ui-usage-card.is-compact {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 126px;
+    max-width: 160px;
   }
 
   /* Sem ficar presa à rolagem da fila: a dica se ancora na barra (o backdrop-filter dela é o bloco de contenção). */
@@ -4322,11 +4397,23 @@
   }
 
   .ui-usage-card {
-    flex: 1 1 0;
+    flex: 1 0 132px;
     width: auto;
-    min-width: 0;
+    min-width: 132px;
     gap: 6px;
     padding: 4px 6px 4px 4px;
+  }
+
+  .ui-usage-card.is-details {
+    flex: 1 0 156px;
+    width: auto;
+    min-width: 156px;
+  }
+
+  .ui-usage-card.is-compact {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 96px;
   }
 
   .ui-usage-card > .ui-acc-chip {
@@ -11321,7 +11408,7 @@ html.is-replay #world {
   display: none;
 }
 
-/* Cartão com a janela mensal (OpenCode Go): uma linha a mais na barra superior. */
+/* Cartão com 3 linhas (OpenCode Go / Antigravity) ou 4 linhas empilhadas: a barra cresce junto. */
 @media (min-width: 601px) {
   .ui-root.has-monthly:not(.has-usage-row) {
     --top-h: 79px;
@@ -11330,10 +11417,22 @@ html.is-replay #world {
   .ui-root.has-monthly.has-usage-row {
     --top-h: 139px;
   }
+
+  .ui-root.has-usage-4:not(.has-usage-row) {
+    --top-h: 95px;
+  }
+
+  .ui-root.has-usage-4.has-usage-row {
+    --top-h: 155px;
+  }
 }
 
 @media (max-width: 600px) {
   .ui-root.has-monthly {
     --top-h: 123px;
+  }
+
+  .ui-root.has-usage-4 {
+    --top-h: 139px;
   }
 }

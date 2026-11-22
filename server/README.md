@@ -564,10 +564,11 @@ faz o proxy de `/api/roadmap/*` para o pipeline, injeta o token do Habblaud e li
 conversa. O navegador nunca vê o token e nenhuma ferramenta de mutação passa por aqui: quem move o roadmap é o agente,
 dentro do pipeline, com `actionId`, `expectedRevision` e auditoria.
 
-- `server/roadmap/config.ts`: `HABBLAUD_ROADMAP`, `HABBLAUD_ROADMAP_URL`, `HABBLAUD_ROADMAP_TOKEN` (aceita
-  `PIPELINE_HABBLAUD_TOKEN` como conveniência) e `HABBLAUD_ROADMAP_IDS` (lista de roadmaps reais; filtra roadmaps e
-  sessões de seed). Sem token, o recurso fica desligado e o botão da barra superior não
-  aparece.
+- `server/roadmap/config.ts`: carrega `.env` da raiz do projeto no boot do servidor, lê `HABBLAUD_ROADMAP`,
+  `HABBLAUD_ROADMAP_URL`, `HABBLAUD_ROADMAP_TOKEN` (aceita `PIPELINE_HABBLAUD_TOKEN` como conveniência) e
+  `HABBLAUD_ROADMAP_IDS` (lista de roadmaps reais; filtra roadmaps e sessões de seed), e persiste `url`/`ids` em
+  `<dataDir>/roadmap.json` junto a `<dataDir>/roadmap-token` apenas após o servidor assumir a porta. Sem token, o
+  recurso fica desligado e o botão da barra superior não aparece.
 - `server/roadmap/proxy.ts`: rotas `/api/roadmap/status`, `/api/roadmap/roadmaps`, snapshot, SSE de roadmap, sessões,
   histórico e envio de mensagem; erros viram o envelope `{error:{code,message,retryable}}` do contrato.
 - Só a porta local com `Host` loopback (o mesmo critério do terminal e do World); pela porta do celular, nem com login.

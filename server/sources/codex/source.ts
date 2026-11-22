@@ -35,7 +35,8 @@ import type { AgentSource } from '../source';
 import { FileTail, LineBuffer, warnOversizedLine } from '../tail';
 import type { TerminalParser } from '../terminal';
 import { codexPlanLabel, detectCodexAccounts } from './accounts';
-import { codexAppServerSocket, readCodexAppServerUsage } from './app-server';
+import { codexAppServerSocket, readCodexAppServerUsage, readCodexCliUsage } from './app-server';
+import { findCodexBin } from '../../messages/codex';
 import { readLocks, readRolloutHead, rolloutDirs, RolloutIndex, parseRolloutName, LOCKS_DIR, type LockInfo } from './files';
 import type { CodexLive } from './live';
 import {
@@ -101,6 +102,10 @@ export interface CodexSourceOptions {
   pollMs?: number;
   /** Releitura do uso ao vivo no app-server local (Codex aberto; padrão 15 s). */
   liveUsageMs?: number;
+  /** Binário do Codex para ler limites via `app-server` quando o socket não está aberto (`null` desliga). */
+  codexBin?: string | null;
+  /** Intervalo mínimo entre consultas via CLI `codex app-server` por conta (padrão 60 s; 0 desliga). */
+  cliUsageMs?: number;
   /** Quanto do fim de cada rollout é lido ao abrir a sessão (padrão 1 MB). */
   tailBytes?: number;
   /** Desliga o fs.watch (testes). */
@@ -122,6 +127,8 @@ interface CodexAccount {
   usage?: AccountUsage;
   plan?: string;
   error?: string;
+  lastCliUsageAt?: number;
+  lastSeedAt?: number;
 }
 
 interface ThreadTracker {
@@ -187,6 +194,9 @@ export class CodexSource implements AgentSource, CodexLive {
   private readonly now: () => number;
   private readonly tailBytes: number;
   private readonly liveUsageMs: number;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly codexBin: string | undefined;
+  private readonly cliUsageMs: number;
   private readonly useWatch: boolean;
   private stopped = false;
 
@@ -194,11 +204,13 @@ export class CodexSource implements AgentSource, CodexLive {
     this.now = opts.now ?? Date.now;
     this.tailBytes = opts.tailBytes ?? 1024 * 1024;
     this.liveUsageMs = opts.liveUsageMs ?? 15_000;
+    this.env = opts.env ?? process.env;
+    this.codexBin = opts.codexBin === null ? undefined : (opts.codexBin ?? findCodexBin(this.env));
+    this.cliUsageMs = opts.cliUsageMs ?? 60_000;
     this.useWatch = opts.watch ?? true;
-    const env = opts.env ?? process.env;
     const claude = opts.accounts.entries();
     this.detected = detectCodexAccounts(opts.dirs, {
-      env,
+      env: this.env,
       home: opts.home,
       taken: { shorts: claude.map((e) => e.detected.short), colors: claude.map((e) => e.detected.color) },
     });
@@ -756,8 +768,10 @@ export class CodexSource implements AgentSource, CodexLive {
   }
 
   /**
-   * Uso ao vivo do app-server local do Codex (quando o Codex está aberto): o TUI já consulta os limites a cada
-   * ~15 s, então o cartão não depende de um turno gravar rollout. Só socket Unix; nunca auth.json, credencial ou rede.
+   * Uso ao vivo do app-server local do Codex:
+   * 1) Socket Unix (`app-server-control.sock`, a cada ~15 s quando o Codex está aberto);
+   * 2) Fallback por CLI (`codex app-server` via stdio, a cada ~60 s quando o socket não está aberto);
+   * 3) Releitura periódica de rollouts (a cada ~60 s) caso não haja binário (ex.: Docker).
    */
   private async refreshLiveUsage(): Promise<void> {
     if (this.liveBusy || this.stopped) return;
@@ -766,7 +780,31 @@ export class CodexSource implements AgentSource, CodexLive {
       for (const acc of this.accs) {
         if (this.stopped) return;
         const live = await readCodexAppServerUsage({ socketPath: codexAppServerSocket(acc.dir), now: this.now() });
-        if (live && !this.stopped) this.pushUsage(acc, live.usage, live.plan);
+        if (this.stopped) return;
+        if (live) {
+          acc.lastCliUsageAt = this.now();
+          this.pushUsage(acc, live.usage, live.plan);
+          continue;
+        }
+        const now = this.now();
+        if (this.codexBin && this.cliUsageMs > 0 && (acc.lastCliUsageAt === undefined || now - acc.lastCliUsageAt >= this.cliUsageMs)) {
+          acc.lastCliUsageAt = now;
+          const cliLive = await readCodexCliUsage({
+            bin: this.codexBin,
+            codexHome: acc.dir,
+            env: this.env,
+            now: this.now(),
+          });
+          if (this.stopped) return;
+          if (cliLive) {
+            this.pushUsage(acc, cliLive.usage, cliLive.plan);
+            continue;
+          }
+        }
+        if (acc.lastSeedAt === undefined || now - acc.lastSeedAt >= 60_000) {
+          acc.lastSeedAt = now;
+          this.seedUsage(acc);
+        }
       }
     } catch {
       // app-server fechando/sem login: a fonte continua com os arquivos; tenta de novo no próximo ciclo.

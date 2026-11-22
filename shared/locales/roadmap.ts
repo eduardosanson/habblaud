@@ -355,6 +355,7 @@ export const ROADMAP_EN: Readonly<Record<string, string>> = {
   "O Hermes Pipeline ainda não registrou uma sessão para este roadmap. A conversa fica disponível quando um agente for vinculado.": "Hermes Pipeline has not registered a session for this roadmap yet. The conversation becomes available when an agent is linked.",
   "roadmap fora da lista permitida": "roadmap outside the allowed list",
   "o Hermes Pipeline devolveu uma resposta inválida": "Hermes Pipeline returned an invalid response",
+  "HABBLAUD_ROADMAP_TOKEN do ambiente difere do .env (enquanto HABBLAUD_ROADMAP_URL veio do .env): confira export antigo no shell ou use ./run-roadmap.sh": "HABBLAUD_ROADMAP_TOKEN from the environment differs from .env (while HABBLAUD_ROADMAP_URL came from .env): check old shell exports or use ./run-roadmap.sh",
 };
 
 export const ROADMAP_ES: Readonly<Record<string, string>> = {
@@ -710,6 +711,7 @@ export const ROADMAP_ES: Readonly<Record<string, string>> = {
   "O Hermes Pipeline ainda não registrou uma sessão para este roadmap. A conversa fica disponível quando um agente for vinculado.": "Hermes Pipeline aún no registró una sesión para este roadmap. La conversación estará disponible cuando se vincule un agente.",
   "roadmap fora da lista permitida": "roadmap fuera de la lista permitida",
   "o Hermes Pipeline devolveu uma resposta inválida": "Hermes Pipeline devolvió una respuesta inválida",
+  "HABBLAUD_ROADMAP_TOKEN do ambiente difere do .env (enquanto HABBLAUD_ROADMAP_URL veio do .env): confira export antigo no shell ou use ./run-roadmap.sh": "HABBLAUD_ROADMAP_TOKEN del entorno difiere de .env (mientras HABBLAUD_ROADMAP_URL vino de .env): revisa exports antiguos del shell o usa ./run-roadmap.sh",
 };
 
 export const ROADMAP_FR: Readonly<Record<string, string>> = {
@@ -1065,4 +1067,5 @@ export const ROADMAP_FR: Readonly<Record<string, string>> = {
   "O Hermes Pipeline ainda não registrou uma sessão para este roadmap. A conversa fica disponível quando um agente for vinculado.": "Hermes Pipeline n’a pas encore enregistré de session pour cette feuille de route. La conversation sera disponible lorsqu’un agent sera lié.",
   "roadmap fora da lista permitida": "feuille de route hors de la liste autorisée",
   "o Hermes Pipeline devolveu uma resposta inválida": "Hermes Pipeline a renvoyé une réponse invalide",
+  "HABBLAUD_ROADMAP_TOKEN do ambiente difere do .env (enquanto HABBLAUD_ROADMAP_URL veio do .env): confira export antigo no shell ou use ./run-roadmap.sh": "HABBLAUD_ROADMAP_TOKEN de l’environnement diffère de .env (alors que HABBLAUD_ROADMAP_URL vient de .env) : vérifiez un ancien export du shell ou utilisez ./run-roadmap.sh",
 };

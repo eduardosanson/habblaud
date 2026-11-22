@@ -620,9 +620,9 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
   na fila da sessão e o Codex a pega quando termina o que está fazendo (até uns 10 segundos depois). No modo Node o
   próprio Habblaud roda o comando; **no Docker**, deixe `npm run codex:bridge` rodando no Mac (o container não
   enxerga o seu Codex).
-- **Uso de 5 horas e semanal:** vem dos próprios arquivos do Codex e, quando o Codex está aberto, também do app-server
-  local dele (um socket Unix) — o cartão acompanha os limites sem esperar um turno. Sem o Codex aberto, mostra a idade
-  da última leitura; e "sem cota" quando o workspace ficou sem créditos.
+- **Uso de 5 horas e semanal:** vem do app-server local do Codex (pelo socket Unix quando está aberto, ou consultando
+  `codex app-server` por stdio a cada 60 s quando fechado) e dos próprios arquivos de sessão como reserva — o cartão
+  acompanha os limites mesmo sem sessão ativa; mostra "sem cota" quando o workspace ficou sem créditos.
 - **Quando a sessão entra:** com a primeira mensagem (é quando o Codex grava a pasta do projeto); uma CLI aberta e
   ainda sem conversa não aparece.
 - **Quando a sessão sai do escritório:** a CLI do Codex roda as sessões num servidor em segundo plano, que as mantém
@@ -673,9 +673,9 @@ As sessões do Antigravity CLI (`agy`) entram pelo hook em `~/.gemini/config/hoo
 acrescenta um grupo `habblaud` ao lado dos hooks que você já usa (Orca, ai-memory…) e o hook manda eventos pequenos para
 `127.0.0.1`. Cada conversa vira um agente na sala do projeto, com status, título do turno e ferramenta em uso.
 
-- **Uso do plano:** vem do próprio CLI (`agy -p "/usage" --output-format json`), com os grupos Gemini Models,
-  Claude and GPT models e Gemini 4 Argon. O cartão mostra a **pior** janela de 5 h e semanal entre os grupos; a dica do
-  cartão lista cada grupo com o seu percentual e reinício.
+- **Uso do plano:** vem do próprio CLI (`agy -p "/usage" --output-format json`), filtrando apenas os modelos do Google
+  (Gemini Models e Gemini 4 Argon, sem terceiros como Claude/GPT). O cartão exibe cada janela diretamente, uma embaixo
+  da outra, e a dica mostra o detalhe completo com os horários de reinício.
 - **Instalar/desinstalar:** `npm run antigravity:install`, `npm run antigravity:status`, `npm run antigravity:uninstall`.
   O instalador preserva os outros grupos de hooks e faz uma cópia do `hooks.json` antes de gravar. `HABBLAUD_ANTIGRAVITY=0`
   desliga a fonte.

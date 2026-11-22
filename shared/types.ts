@@ -276,10 +276,14 @@ export interface UsageWindow {
   resetsAt?: number;
 }
 
-/** Uma janela extra com nome (Antigravity tem grupos: Gemini Models, Claude/GPT, Argon...). */
+/** Uma janela extra com nome (Antigravity tem grupos: Gemini Models, Gemini 4 Argon...). */
 export interface UsageDetail {
   /** Nome para exibir, ex.: "Gemini Models · semana". */
   label: string;
+  /** Nome do grupo original (ex.: "Gemini Models", "Gemini 4 Argon"). */
+  group?: string;
+  /** Duração da janela, para formatar rótulo e detectar renovação. */
+  window?: '5h' | 'weekly' | 'monthly';
   /** Percentual usado, 0–100. */
   utilization: number;
   /** Quando reinicia (epoch ms). */
@@ -307,8 +311,8 @@ export interface AccountUsage {
    * - 'antigravity': `agy -p "/usage" --output-format json` (grupos e janelas do Antigravity).
    */
   source: 'cache' | 'statusline' | 'codex' | 'opencode' | 'antigravity';
-  /** Quem gravou o arquivo ao vivo ('statusline'): o mod do Habblaud no Claude Code ou o tap de statusline. */
-  via?: 'mod' | 'tap';
+  /** Quem capturou o uso ao vivo ('statusline': mod/tap; 'codex': app-server). */
+  via?: 'mod' | 'tap' | 'app-server';
   /**
    * Conta sem cota nem créditos para usar agora (Codex: `rate_limits.primary` nulo, ex.: créditos do workspace
    * esgotados). Não é "0% usado": as janelas ficam ausentes.

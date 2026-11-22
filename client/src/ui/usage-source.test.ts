@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
 import { HERMES_GROUP } from './account-filter';
-import { antigravityUsageNote, cardState, codexUsageNote, hermesUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import { FIVE_HOURS_MS, MONTH_MS, WEEK_MS } from './format';
+import { antigravityUsageNote, cardState, codexUsageNote, detailMeterMeta, hermesUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -15,6 +16,7 @@ describe('sourceLabel', () => {
     expect(sourceLabel({ source: 'statusline', fetchedAt: 0 })).toBe('ao vivo (statusline do Claude Code)');
     expect(sourceLabel({ source: 'cache', fetchedAt: 0 })).toBe('cache do /usage do Claude Code');
     expect(sourceLabel({ source: 'codex', fetchedAt: 0 })).toBe('arquivos do Codex');
+    expect(sourceLabel({ source: 'codex', via: 'app-server', fetchedAt: 0 })).toBe('ao vivo (app-server do Codex)');
     expect(sourceLabel({ source: 'opencode', fetchedAt: 0 })).toBe('limites do OpenCode');
     expect(sourceLabel({ source: 'antigravity', fetchedAt: 0 })).toBe('limites do Antigravity');
   });
@@ -39,6 +41,9 @@ describe('cartão de uso de uma conta do Codex', () => {
     expect(showsUsageAge({ usage: { ...fresh, source: 'statusline' }, usageStatus: 'ok' })).toBe(false);
     expect(showsUsageAge({ usage: { ...fresh, source: 'cache' }, usageStatus: 'stale' })).toBe(true);
     expect(codexUsageNote(codex({ usage: fresh }), 12 * MIN)).toBe('O Codex só grava o uso enquanto alguma sessão roda: estes números são da última leitura (há 12 min).');
+    expect(codexUsageNote(codex({ usage: { ...fresh, via: 'app-server' } }), 12 * MIN)).toBe(
+      'Limites lidos ao vivo pelo app-server local do Codex (última leitura: há 12 min).',
+    );
   });
 
   it('sem números: não há o que instalar; embaixo do nome, o plano (sem e-mail)', () => {
@@ -85,16 +90,45 @@ describe('cartão de uso de uma conta do Antigravity', () => {
     ...over,
   });
 
-  it('sem números, não há o que instalar; com números, cita os grupos do plano', () => {
+  it('sem números, não há o que instalar; com números, cita os modelos do Google', () => {
     expect(usageMessage(antigravity())).toEqual(['sem dados ainda', 'sem dados']);
-    expect(usageSubtitle(antigravity())).toBe('plano Antigravity');
+    expect(usageSubtitle(antigravity())).toBe('Google');
+    expect(usageSubtitle(antigravity({ plan: 'Ultra' }))).toBe('plano Ultra');
     expect(cardState(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }))).toBe('ok');
+    expect(cardState(antigravity({ usage: { source: 'antigravity', details: [{ label: 'Gemini Models · 5 h', utilization: 5 }], fetchedAt: 0 } }))).toBe('ok');
     expect(showsUsageAge(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }))).toBe(true);
     expect(antigravityUsageNote(antigravity({ usage: { source: 'antigravity', fiveHour: win, fetchedAt: 0 } }), 12 * MIN)).toBe(
-      'O Antigravity informa os grupos do plano (Gemini, Claude/GPT, Argon); o cartão usa a pior janela e a dica lista cada grupo. Estes números são da última leitura (há 12 min).',
+      'O Antigravity exibe apenas os modelos do Google (Gemini e Argon), sem modelos de terceiros. Estes números são da última leitura (há 12 min).',
     );
     expect(antigravityUsageNote(antigravity(), 0)).toBe('Não há o que instalar: o uso vem do próprio CLI do Antigravity (`agy`).');
     expect(antigravityUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+
+  it('detailMeterMeta gera rótulos compactos e windowMs correto para cada janela', () => {
+    expect(detailMeterMeta({ label: 'Gemini Models · 5 h', group: 'Gemini Models', window: '5h', utilization: 5 })).toEqual({
+      long: 'Gemini 5h',
+      short: 'Gem. 5h',
+      title: 'Gemini Models · 5 h',
+      windowMs: FIVE_HOURS_MS,
+    });
+    expect(detailMeterMeta({ label: 'Gemini Models · semana', group: 'Gemini Models', window: 'weekly', utilization: 9 })).toEqual({
+      long: 'Gemini Sem.',
+      short: 'Gem. Sem.',
+      title: 'Gemini Models · semana',
+      windowMs: WEEK_MS,
+    });
+    expect(detailMeterMeta({ label: 'Gemini 4 Argon · semana', group: 'Gemini 4 Argon', window: 'weekly', utilization: 0 })).toEqual({
+      long: 'Argon Sem.',
+      short: 'Arg. Sem.',
+      title: 'Gemini 4 Argon · semana',
+      windowMs: WEEK_MS,
+    });
+    expect(detailMeterMeta({ label: 'Gemini 4 Argon · mês', utilization: 10 })).toEqual({
+      long: 'Argon Mês',
+      short: 'Arg. Mês',
+      title: 'Gemini 4 Argon · mês',
+      windowMs: MONTH_MS,
+    });
   });
 });
 

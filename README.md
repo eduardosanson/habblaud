@@ -621,9 +621,9 @@ Codex account chip is hollow and carries the **CODEX** tag.
   the session's queue and Codex picks it up when it finishes what it's doing (up to about 10 seconds later). In Node mode
   Habblaud runs the command itself; **in Docker**, keep `npm run codex:bridge` running on the Mac (the container can't
   see your Codex).
-- **5-hour and weekly usage:** comes from Codex's own files and, while Codex is open, also from its local app-server
-  (a Unix socket) — the card follows the limits without waiting for a turn. With Codex closed it shows how old the last
-  reading is; and "no quota" when the workspace has run out of credits.
+- **5-hour and weekly usage:** comes from Codex's local app-server (via its Unix socket while open, or `codex app-server`
+  over stdio every 60 s when closed) and falls back to Codex's session files — the card stays up to date even with no
+  active session; shows "no quota" when the workspace has run out of credits.
 - **When the session comes in:** with the first message (that's when Codex records the project folder); a CLI that's open
   and still has no conversation doesn't show up.
 - **When the session leaves the office:** the Codex CLI runs sessions on a background server, which keeps them
@@ -673,9 +673,9 @@ Antigravity CLI (`agy`) sessions join through the hook in `~/.gemini/config/hook
 adds a `habblaud` group next to the hooks you already use (Orca, ai-memory…) and the hook sends small events to
 `127.0.0.1`. Each conversation becomes an agent in the project room, with status, turn title and the tool in use.
 
-- **Plan usage:** comes from the CLI itself (`agy -p "/usage" --output-format json`), with the Gemini Models,
-  Claude and GPT models and Gemini 4 Argon groups. The card shows the **worst** 5-hour and weekly window across groups;
-  the card tooltip lists each group with its percentage and reset.
+- **Plan usage:** comes from the CLI itself (`agy -p "/usage" --output-format json`), filtering only Google model groups
+  (Gemini Models and Gemini 4 Argon, excluding third-party models like Claude/GPT). The card shows each window stacked
+  line by line and the tooltip lists the full breakdown and reset times.
 - **Install/uninstall:** `npm run antigravity:install`, `npm run antigravity:status`, `npm run antigravity:uninstall`.
   The installer preserves the other hook groups and backs up `hooks.json` before writing. `HABBLAUD_ANTIGRAVITY=0` turns
   the source off.

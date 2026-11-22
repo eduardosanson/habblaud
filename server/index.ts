@@ -4,11 +4,13 @@
 //   npm start      -> node dist/server/index.js (serve dist/client)
 import http from 'node:http';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { codexDirsRefused, isDefaultDir } from './accounts/detect';
 import { AccountsService } from './accounts/service';
-import { isTruthy, loadConfig, messagesOffReason, terminalOffReason, worldSocketUrl } from './config';
-import { syncRoadmapTokenFile } from './roadmap/config';
+import { findRoot, isTruthy, loadConfig, messagesOffReason, terminalOffReason, worldSocketUrl } from './config';
+import { applyDotEnv, mergeEnvWithDotEnv, readDotEnv } from './dotenv';
+import { parseRoadmapConfig, roadmapEnvConflictWarning, syncRoadmapConfigFile, type RoadmapConfig } from './roadmap/config';
 import { createApiHandler, sendJson } from './http/app';
 import { createRequestGuard, isLoopbackHost } from './http/guard';
 import { createRemoteGate, isRemoteRequest, loadSecret, RemoteSessions, startRemoteListener, type RemoteListener } from './http/remote';
@@ -67,8 +69,10 @@ import { BuildingTokens } from './world/tokens';
 import { BuildingUplink } from './world/uplink';
 import { WorldViewer } from './world/viewer';
 
-const config = loadConfig();
-syncRoadmapTokenFile(config.roadmap.token);
+const initialEnv: NodeJS.ProcessEnv = { ...process.env };
+const dotEnvPath = join(findRoot(dirname(fileURLToPath(import.meta.url))), '.env');
+const dotEnv = applyDotEnv(dotEnvPath, process.env);
+const config = loadConfig(process.env, process.argv);
 const startedAt = Date.now();
 
 // Nome antigo (CodeTown, até a 0.3.2): leva ~/.codetown para ~/.habblaud antes de ler qualquer estado e avisa
@@ -394,9 +398,13 @@ const ticker = setInterval(() => {
   }
 }, 250);
 
+const resolveRoadmapEnv = (): NodeJS.ProcessEnv => mergeEnvWithDotEnv(initialEnv, readDotEnv(dotEnvPath));
+const currentRoadmapConfig = (): RoadmapConfig => parseRoadmapConfig(resolveRoadmapEnv(), { dataDir: config.dataDir });
+
 const roadmap = createRoadmapHandler({
-  config: config.roadmap,
+  config: currentRoadmapConfig,
   isLocal: (req) => !isRemoteRequest(req) && isLoopbackHost(req.headers.host),
+  extraCaPath: () => resolveRoadmapEnv().NODE_EXTRA_CA_CERTS?.trim(),
 });
 
 const api = createApiHandler({
@@ -440,7 +448,7 @@ const api = createApiHandler({
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
   world: world ? createWorldRoutes(world, worldViewer, worldSocial) : undefined,
   roadmap,
-  roadmapAvailable: config.roadmap.enabled,
+  roadmapAvailable: () => currentRoadmapConfig().enabled,
 });
 
 const server = http.createServer();
@@ -597,6 +605,9 @@ server.listen(config.port, config.host, () => {
             config.terminal ? '' : tr(' (só leitura: a trava do terminal está desligada)'),
           ]),
   );
+  const roadmapConflict = roadmapEnvConflictWarning(initialEnv, dotEnv);
+  if (roadmapConflict) log.warn(`   ${roadmapConflict}.`);
+  else syncRoadmapConfigFile(process.env, { dataDir: config.dataDir });
   log.info(
     config.roadmap.enabled
       ? tr('   Roadmap: ligado em {0} (Hermes Pipeline).', [config.roadmap.url ?? ''])

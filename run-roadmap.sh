@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -a
-source .env
-set +a
-npm run dev
+cd "$(dirname "$0")" || exit 1
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+exec npm run dev

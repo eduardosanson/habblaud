@@ -12,10 +12,19 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
-- **Codex ao vivo quando ele está aberto.** O cartão só olhava os rollouts e ficava parado na última gravação (por
-  exemplo, 13 h atrás), mesmo com o Codex aberto consultando os limites no app-server local. Agora o Habblaud lê esse
-  socket a cada 15 s e mostra o limite atual; sem o Codex aberto, continua valendo a última leitura dos arquivos. É só
-  um socket Unix local: nada de `auth.json`, credenciais ou chamadas de rede do Habblaud.
+- **Configuração remota do roadmap mantida entre reinícios.** O Habblaud agora carrega `.env` da raiz do projeto ao
+  subir no Node, persiste URL/IDs do roadmap em `<dataDir>/roadmap.json` junto ao `roadmap-token` somente após abrir a
+  porta, relê alterações de `.env`/disco em tempo real e avisa quando um `HABBLAUD_ROADMAP_TOKEN` antigo do shell
+  conflita com o `.env`.
+- **Codex ao vivo mesmo sem sessão ou TUI aberto.** O cartão ficava preso no último rollout gravado (dias atrás)
+  sempre que o socket `app-server-control.sock` não estava ativo (como quando o Codex está fechado). Agora o
+  Habblaud também consulta `codex app-server` por stdio (`account/rateLimits/read`) a cada 60 s quando o socket não
+  responde, mantendo os limites sempre em dia; sem o binário `codex`, continua valendo a leitura dos arquivos.
+- **Antigravity: apenas modelos do Google e layout para até 4 limites.** O cartão do Antigravity mostrava o grupo de
+  terceiros (`Claude and GPT models`) e escondia os detalhes individuais na dica. Agora o parser filtra apenas os
+  grupos do Google (`Gemini Models`, `Gemini 4 Argon`), exibe os limites individuais diretamente no cartão em linhas
+  empilhadas (uma embaixo da outra), deixa o cartão do Hermes compacto quando sem limites e evita esmagar os cartões na
+  barra superior em telas médias (1280–1440 px).
 - **Uso do Codex com uma sessão aberta e parada.** O cartão da conta mostrava a última leitura da sessão aberta, mesmo
   quando outro rollout (já fechado) tinha números mais novos: uma sessão parada desde as 03:28 escondia a leitura das
   12:10, e a semana aparecia com 41% em vez de 61%. Ao subir, o Habblaud agora sempre procura o uso mais recente nos

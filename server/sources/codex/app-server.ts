@@ -1,6 +1,9 @@
-// Uso do Codex AO VIVO pelo app-server local: quando o Codex (TUI/VS Code) está aberto, ele mantém um socket
-// (app-server-control.sock) e já consulta account/rateLimits/read a cada ~15 s. Ler esse socket dá o limite atual
-// sem esperar um turno e sem ler auth.json, credenciais ou fazer chamada de rede: é só um socket Unix local.
+// Uso do Codex AO VIVO pelo app-server local:
+// 1) Quando o Codex (TUI/VS Code) está aberto, lê o socket `app-server-control.sock` a cada ~15 s;
+// 2) Quando o socket não está disponível (ex.: Codex fechado), dispara o próprio `codex app-server` por stdio
+//    (JSON-RPC por linha, `account/rateLimits/read`) a cada ~60 s.
+// O Habblaud não lê auth.json nem faz chamadas de rede próprias.
+import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { connect } from 'node:net';
@@ -64,7 +67,7 @@ export function usageFromAppServer(raw: unknown, now: number): CodexLiveUsage | 
   const rl = rec(byId?.codex) ?? rec(result.rateLimits) ?? (byId ? rec(Object.values(byId)[0]) : undefined);
   if (!rl) return undefined;
 
-  const usage: AccountUsage = { source: 'codex', fetchedAt: now };
+  const usage: AccountUsage = { source: 'codex', via: 'app-server', fetchedAt: now };
   for (const [position, value] of [
     ['fiveHour', rl.primary],
     ['sevenDay', rl.secondary],
@@ -134,8 +137,8 @@ function readWsFrame(buffer: Buffer): WsFrame | undefined {
     length = Number(big);
     offset = 10;
   }
-  const maskOffset = masked ? offset : 0;
-  offset += maskOffset + length;
+  const maskBytes = masked ? 4 : 0;
+  offset += maskBytes + length;
   if (buffer.length < offset) return undefined;
   let payload = buffer.subarray(offset - length, offset);
   if (masked) {
@@ -177,6 +180,7 @@ export async function readCodexAppServerUsage(opts: ReadCodexLiveOptions): Promi
       }
       if (message.id === 1) {
         if (message.error) return finish(undefined);
+        send({ jsonrpc: '2.0', method: 'initialized', params: {} });
         send({ jsonrpc: '2.0', id: 2, method: 'account/rateLimits/read', params: {} });
         return;
       }
@@ -229,5 +233,100 @@ export async function readCodexAppServerUsage(opts: ReadCodexLiveOptions): Promi
     });
     sock.on('error', () => finish(undefined));
     sock.on('close', () => finish(undefined));
+  });
+}
+
+export interface ReadCodexCliOptions {
+  bin: string;
+  codexHome: string;
+  env?: NodeJS.ProcessEnv;
+  now?: number;
+  /** Tempo máximo para inicializar e ler (padrão 10 s). */
+  timeoutMs?: number;
+  /** Argumentos passados ao binário (padrão `['app-server']`). */
+  args?: string[];
+}
+
+/**
+ * Lê o uso ao vivo disparando um `codex app-server` efêmero por stdio (JSON-RPC por linha).
+ * Usado quando o socket `app-server-control.sock` não está aberto (Codex TUI/Desktop fechado).
+ * Mantém stdin aberto até a resposta `id === 2` (fechar antes faz o `codex app-server` descartar a resposta).
+ */
+export async function readCodexCliUsage(opts: ReadCodexCliOptions): Promise<CodexLiveUsage | undefined> {
+  if (!opts.bin) return undefined;
+  return await new Promise<CodexLiveUsage | undefined>((resolve) => {
+    let done = false;
+    let buf = '';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const child = spawn(opts.bin, opts.args ?? ['app-server'], {
+      env: { ...(opts.env ?? process.env), CODEX_HOME: opts.codexHome },
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
+    const finish = (value: CodexLiveUsage | undefined): void => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      try {
+        child.stdin?.end();
+      } catch {
+        // já fechado
+      }
+      try {
+        child.kill();
+      } catch {
+        // já encerrado
+      }
+      resolve(value);
+    };
+    const send = (message: Record<string, unknown>): void => {
+      if (done) return;
+      try {
+        child.stdin?.write(`${JSON.stringify(message)}\n`);
+      } catch {
+        finish(undefined);
+      }
+    };
+    const handleLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      let msg: Record<string, unknown>;
+      try {
+        msg = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      if (msg.id === 1) {
+        if (msg.error) return finish(undefined);
+        send({ jsonrpc: '2.0', method: 'initialized', params: {} });
+        send({ jsonrpc: '2.0', id: 2, method: 'account/rateLimits/read', params: {} });
+        return;
+      }
+      if (msg.id === 2) {
+        if (msg.error) return finish(undefined);
+        finish(usageFromAppServer(msg.result, opts.now ?? Date.now()));
+      }
+    };
+
+    timer = setTimeout(() => finish(undefined), opts.timeoutMs ?? 10_000);
+    timer.unref?.();
+    child.stdin?.on('error', () => {});
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      buf += chunk.toString();
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        handleLine(line);
+        if (done) return;
+      }
+    });
+    child.on('error', () => finish(undefined));
+    child.on('close', () => finish(undefined));
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { clientInfo: { name: 'habblaud', version: '0.0.0' }, capabilities: { experimentalApi: true } },
+    });
   });
 }
