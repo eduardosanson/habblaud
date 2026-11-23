@@ -150,6 +150,36 @@ describe('proxy do roadmap', () => {
     expect((await fetch(`${base}/api/roadmap/roadmaps/atlas-ondas`)).status).toBe(200);
   });
 
+  it('repassa participants e executions do item, somente leitura, com o token', async () => {
+    const seen: string[] = [];
+    const upstream = await listen((req, res) => {
+      seen.push(`${req.method} ${req.url} ${String(req.headers.authorization)}`);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ participants: [] }));
+    });
+    const base = await startProxy({ ...CONFIG, url: upstream });
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/participants`)).status).toBe(200);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/executions`)).status).toBe(200);
+    expect(seen).toEqual([
+      'GET /api/roadmaps/praca/items/praca-3.7/participants Bearer segredo',
+      'GET /api/roadmaps/praca/items/praca-3.7/executions Bearer segredo',
+    ]);
+    // POST nessas rotas não vira escrita: o pipeline só registra pelas ferramentas do agente.
+    const posted = await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/participants`, { method: 'POST', body: '{}' });
+    expect(posted.status).toBe(405);
+  });
+
+  it('com HABBLAUD_ROADMAP_IDS a allowlist vale também para as rotas do item', async () => {
+    const upstream = await listen((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end('{}');
+    });
+    const base = await startProxy({ ...CONFIG, url: upstream, ids: ['atlas-ondas'] });
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/participants`)).status).toBe(404);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/executions`)).status).toBe(404);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/atlas-ondas/items/atlas-ondas-E1/participants`)).status).toBe(200);
+  });
+
   it('responde 502 quando o pipeline está fora do ar', async () => {
     const base = await startProxy({ ...CONFIG, url: 'http://127.0.0.1:1' });
     const response = await fetch(`${base}/api/roadmap/roadmaps`);

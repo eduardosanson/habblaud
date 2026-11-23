@@ -21,10 +21,14 @@ const ALLOWED: readonly RegExp[] = [
   /^\/api\/roadmaps$/,
   /^\/api\/roadmaps\/[^/]+$/,
   /^\/api\/roadmaps\/[^/]+\/events$/,
+  /^\/api\/roadmaps\/[^/]+\/items\/[^/]+\/(?:participants|executions)$/,
   /^\/api\/agent\/sessions$/,
   /^\/api\/agent\/sessions\/[^/]+\/messages$/,
   /^\/api\/agent\/sessions\/[^/]+\/events$/,
 ];
+
+/** Única rota que aceita POST: a mensagem para o agente. Todas as outras são somente leitura. */
+const POSTABLE = /^\/api\/agent\/sessions\/[^/]+\/messages$/;
 
 export interface RoadmapStatus {
   enabled: boolean;
@@ -240,7 +244,13 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       sendJson(res, 404, errorBody('not_found', tr('rota de roadmap desconhecida')));
       return;
     }
-    const snapshotMatch = /^\/api\/roadmaps\/([^/]+)(?:\/events)?$/.exec(targetPath);
+    if (method === 'POST' && !POSTABLE.test(targetPath)) {
+      req.resume();
+      res.setHeader('Allow', 'GET');
+      sendJson(res, 405, errorBody('method_not_allowed', tr('método não permitido')));
+      return;
+    }
+    const snapshotMatch = /^\/api\/roadmaps\/([^/]+)(?:\/events|\/items\/[^/]+\/(?:participants|executions))?$/.exec(targetPath);
     if (snapshotMatch && !allowedId(config, decodeId(snapshotMatch[1]!))) {
       req.resume();
       sendJson(res, 404, errorBody('not_found', tr('roadmap fora da lista permitida')));
