@@ -82,7 +82,7 @@ describe('POST /api/roadmap/converse', () => {
     const { base, sent } = await start(await fakePipeline([codexParticipant], [], seen));
     const response = await post(base, { roadmapId: 'r', itemId: 'i', text: 'como ficou o teste?' });
     expect(response.status).toBe(202);
-    expect(await response.json()).toMatchObject({ accepted: true, messageId: 'm-1', agentId: 'codex:1', route: { reason: 'live', provider: 'codex' } });
+    expect(await response.json()).toMatchObject({ accepted: true, messageId: 'm-1', agentId: 'codex:1', sentAt: expect.any(Number), route: { reason: 'live', provider: 'codex' } });
     expect(sent).toHaveLength(1);
     const delivered = sent[0] as { agentId: string; text: string };
     expect(delivered.agentId).toBe('codex:1');
@@ -105,7 +105,7 @@ describe('POST /api/roadmap/converse', () => {
     const { base, sent } = await start(await fakePipeline([codexParticipant]), { live: false });
     const response = await post(base, { roadmapId: 'r', itemId: 'i', text: 'oi' });
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: { code: 'session_closed' }, route: { reason: 'recent', resumable: true } });
+    expect(await response.json()).toMatchObject({ error: { code: 'session_closed', details: { route: { reason: 'recent', resumable: true } } } });
     expect(sent).toHaveLength(0);
   });
 

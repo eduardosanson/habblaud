@@ -341,6 +341,21 @@ export function listParticipants(roadmapId: string, itemId: string): Promise<{ r
   return request(itemPath(roadmapId, itemId, 'participants'));
 }
 
+/** Resposta de POST /api/roadmap/converse: a pergunta entrou na fila da sessão do agente que trabalhou no item. */
+export interface ApiConverseAccepted {
+  accepted: true;
+  messageId: string;
+  agentId: string;
+  /** Instante do envio (ms); respostas do agente só valem a partir dele (ver bridge.ts). */
+  sentAt: number;
+  route: { reason: 'live' | 'recent' | 'roadmap-live' | 'roadmap-recent'; provider: string; resumable: boolean; profile?: string; role?: string };
+}
+
+/** Pergunta ao agente real que trabalhou no item. 409 `session_closed` traz `details.route` (a sessão está fechada). */
+export function postConverse(body: { roadmapId: string; itemId: string; text: string }): Promise<ApiConverseAccepted> {
+  return request('/converse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
 export function listSessions(): Promise<{ sessions: ApiSession[] }> {
   return request('/agent/sessions');
 }

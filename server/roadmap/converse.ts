@@ -25,8 +25,8 @@ export interface ConverseOutcome {
   body: unknown;
 }
 
-function fail(status: number, code: string, message: string, extra: Record<string, unknown> = {}, retryable = false): ConverseOutcome {
-  return { status, body: { error: { code, message, retryable }, ...extra } };
+function fail(status: number, code: string, message: string, details?: Record<string, unknown>, retryable = false): ConverseOutcome {
+  return { status, body: { error: { code, message, retryable, ...(details ? { details } : {}) } } };
 }
 
 function idOf(value: unknown): string | null {
@@ -78,7 +78,7 @@ export async function converse(
       if (history.status === 200) executions = arrayAt(history.json, 'executions') as RouterExecution[];
     }
   } catch {
-    return fail(502, 'pipeline_unavailable', tr('o Hermes Pipeline não respondeu'), {}, true);
+    return fail(502, 'pipeline_unavailable', tr('o Hermes Pipeline não respondeu'), undefined, true);
   }
 
   const liveAgents: LiveAgent[] = deps.office
@@ -102,10 +102,11 @@ export async function converse(
   if ('message' in sent) {
     return {
       status: 202,
-      body: { accepted: true, messageId: sent.message.id, agentId: route.agent.id, route: routeSummary(route) },
+      // `sentAt`: a página só considera respostas do agente a partir daqui (a pergunta aparece no terminal dele).
+      body: { accepted: true, messageId: sent.message.id, agentId: route.agent.id, sentAt: Date.now(), route: routeSummary(route) },
     };
   }
   if (sent.error === 'unavailable') return fail(409, 'unavailable', sent.reason, { route: routeSummary(route) });
-  if (sent.error === 'too-many') return fail(429, 'too_many', tr('há mensagens demais esperando este agente'), {}, true);
+  if (sent.error === 'too-many') return fail(429, 'too_many', tr('há mensagens demais esperando este agente'), undefined, true);
   return fail(404, 'no_session', tr('o agente saiu do escritório'));
 }
