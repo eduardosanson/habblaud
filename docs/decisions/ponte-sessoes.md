@@ -12,3 +12,9 @@
 - Decisão: POST só na rota de mensagens; as demais rotas do proxy respondem 405 — o teste de `participants` mostrou que qualquer rota permitida aceitava POST, inclusive as antigas.
 - Decisão: o roteador aceita `workerSessionId` + `provider` de pipeline antigo (id real e provider já conhecido), sem `workdir` — dá para falar com quem está vivo, não para reabrir.
 - Risco aceito: o envelope de `participants` é suposto (`{roadmapId, itemId, participants[]}`, espelhando `executions`) até o pipeline publicar o openapi.
+
+## BUILD (H4) — 2026-11-23
+
+- Decisão: `POST /api/roadmap/converse` vive dentro do handler do roadmap (herda porta local, token e allowlist) e só existe com as mensagens do escritório ligadas; sem sessão viva responde 409 `session_closed` em vez de inventar resposta.
+- Decisão: o fallback "quem trabalhou no roadmap" existe no roteador, mas H4 só alimenta o nível do item — agregar por item exigiria varrer o snapshot; fica para quando o pipeline expuser uma rota do roadmap inteiro.
+- Risco aceito: a entrega só confirma "entrou na fila da sessão"; a resposta do agente (H5) ainda não volta para a gaveta.

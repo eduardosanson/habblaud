@@ -405,6 +405,8 @@ const roadmap = createRoadmapHandler({
   config: currentRoadmapConfig,
   isLocal: (req) => !isRemoteRequest(req) && isLoopbackHost(req.headers.host),
   extraCaPath: () => resolveRoadmapEnv().NODE_EXTRA_CA_CERTS?.trim(),
+  // A conversa do roadmap vai para a sessão real do agente, pela fila de mensagens do escritório; sem ela, a rota não existe.
+  converse: messages ? { office: { list: () => office.list() }, messages } : undefined,
 });
 
 const api = createApiHandler({

@@ -11,6 +11,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tr } from '../../shared/i18n';
 import { sendJson } from '../http/app';
 import type { RoadmapConfig } from './config';
+import { converse, type ConverseDeps } from './converse';
+
+export type { ConverseDeps };
 
 const PREFIX = '/api/roadmap';
 const MAX_BODY = 1_000_000;
@@ -47,6 +50,8 @@ export interface RoadmapProxyOptions {
   isLocal(req: IncomingMessage): boolean;
   /** CA adicional opcional (equivalente a NODE_EXTRA_CA_CERTS quando carregado do `.env` após o boot do Node). */
   extraCaPath?: string | (() => string | undefined);
+  /** Conversa pelas sessões reais do escritório (POST /api/roadmap/converse). Sem isso, a rota não existe. */
+  converse?: ConverseDeps;
 }
 
 function errorBody(code: string, message: string, retryable = false): Record<string, unknown> {
@@ -232,6 +237,15 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       );
       return;
     }
+    if (url.pathname === `${PREFIX}/converse`) {
+      if (!opts.converse || method !== 'POST') {
+        req.resume();
+        sendJson(res, opts.converse ? 405 : 404, errorBody(opts.converse ? 'method_not_allowed' : 'not_found', opts.converse ? tr('método não permitido') : tr('rota de roadmap desconhecida')));
+        return;
+      }
+      void handleConverse(opts.converse, req, res, config, readCaPath());
+      return;
+    }
     if (method !== 'GET' && method !== 'POST') {
       req.resume();
       res.setHeader('Allow', 'GET, POST');
@@ -332,4 +346,35 @@ async function forward(
     res.on('close', () => upstream.destroy());
     upstream.end(body);
   });
+}
+
+async function handleConverse(
+  deps: ConverseDeps,
+  req: IncomingMessage,
+  res: ServerResponse,
+  config: RoadmapConfig,
+  caPath: string | undefined,
+): Promise<void> {
+  let raw: unknown;
+  try {
+    const body = await readBody(req);
+    raw = body.length ? JSON.parse(body.toString('utf8')) : {};
+  } catch (error) {
+    const tooLarge = error instanceof Error && error.message === 'too_large';
+    sendJson(res, tooLarge ? 413 : 400, errorBody(tooLarge ? 'too_large' : 'bad_request', tooLarge ? tr('corpo grande demais') : tr('JSON inválido')));
+    return;
+  }
+  const ca = extraCaOption(caPath);
+  const get = async (path: string) => {
+    const result = await upstreamJson(config.url!, config.token!, path, '', ca);
+    let json: unknown = null;
+    try {
+      json = result.body.length ? JSON.parse(result.body.toString('utf8')) : null;
+    } catch {
+      json = null;
+    }
+    return { status: result.status, json };
+  };
+  const outcome = await converse(deps, get, (id) => allowedId(config, id), raw);
+  sendJson(res, outcome.status, outcome.body);
 }
