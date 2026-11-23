@@ -279,6 +279,68 @@ export function getRoadmap(id: string): Promise<ApiSnapshot> {
   return request(`/roadmaps/${encodeURIComponent(id)}`);
 }
 
+/**
+ * Como reabrir a sessão que fez a execução (registro do pipeline). Dado de outro processo: o `argv` nunca é executado
+ * pelo Habblaud (ver server/roadmap/harness.ts).
+ */
+export interface ApiResume {
+  harness: string;
+  sessionId: string;
+  workdir: string;
+  argv: string[];
+}
+
+/** Execução registrada no item. Campos de sessão reabrível só existem em pipelines mais novos. */
+export interface ApiItemExecution {
+  id: number;
+  roadmapId: string;
+  itemId: string;
+  source: string;
+  board?: string;
+  runId?: string;
+  profile: string;
+  provider: string;
+  model: string;
+  /** Id real da sessão do worker quando conhecido; vazio quando o pipeline não o capturou. */
+  workerSessionId: string;
+  startedAt: string;
+  endedAt?: string;
+  outcome?: string;
+  summary?: string;
+  changedFiles?: string[];
+  statusFrom?: string;
+  statusTo?: string;
+  createdAt?: string;
+  harness?: string;
+  workdir?: string;
+  role?: string;
+  resume?: ApiResume | null;
+}
+
+/** Agente que participou do item, com a última sessão reabrível dele. */
+export interface ApiParticipant {
+  profile: string;
+  harness: string;
+  model: string;
+  role: string;
+  executions: number;
+  lastOutcome?: string;
+  lastEndedAt?: string;
+  resume: ApiResume | null;
+}
+
+function itemPath(roadmapId: string, itemId: string, leaf: string): string {
+  return `/roadmaps/${encodeURIComponent(roadmapId)}/items/${encodeURIComponent(itemId)}/${leaf}`;
+}
+
+export function listExecutions(roadmapId: string, itemId: string): Promise<{ roadmapId: string; itemId: string; executions: ApiItemExecution[] }> {
+  return request(itemPath(roadmapId, itemId, 'executions'));
+}
+
+export function listParticipants(roadmapId: string, itemId: string): Promise<{ roadmapId: string; itemId: string; participants: ApiParticipant[] }> {
+  return request(itemPath(roadmapId, itemId, 'participants'));
+}
+
 export function listSessions(): Promise<{ sessions: ApiSession[] }> {
   return request('/agent/sessions');
 }
