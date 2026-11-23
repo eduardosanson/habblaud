@@ -1,44 +1,47 @@
-import type { ConversationContext, PlanRef, WorkItemType } from './data';
+import type { Provider } from '../../../shared/types';
+import type { ConversationContext, WorkItemType } from './data';
 
 export type Variant = 'overview' | 'phases' | 'backlog' | 'work';
 export type Filter = 'all' | 'active' | 'blocked' | 'done' | 'future';
 export type BacklogTypeFilter = 'all' | WorkItemType;
 export type StreamStatus = 'connecting' | 'live' | 'reconnecting' | 'closed';
 
-export interface ActionReceipt {
-  id: string;
-  action: string;
-  status: 'started' | 'applied' | 'rejected';
-  target: { roadmapId: string; itemId?: string };
-  summary: string;
-  revision: number;
-  error?: { code: string; message: string; retryable?: boolean };
+/** Quem respondeu: o agente real da sessão que trabalhou no item (nome do perfil no pipeline e provider). */
+export interface ChatAuthor {
+  name: string;
+  provider: Provider;
 }
 
 export interface ChatMessage {
   id: string;
-  messageId: string;
   role: 'agent' | 'user';
-  agentId?: string;
+  author?: ChatAuthor;
   text: string;
   at: string;
-  replyTo?: string;
-  state?: string;
-  planRef?: PlanRef;
-  actions?: ActionReceipt[];
+}
+
+/** Agente que recebeu a pergunta (resposta de POST /api/roadmap/converse). */
+export interface ConversationTarget {
+  agentId: string;
+  provider: Provider;
+  profile?: string;
+  role?: string;
+  /** A sessão pode ser reaberta se fechar (há comando verificado para o provider). */
+  resumable: boolean;
 }
 
 export interface ConversationUiState {
   open: boolean;
   context: ConversationContext;
-  sessionId: string | null;
   messages: ChatMessage[];
-  loading: boolean;
+  /** Pergunta entregue e o agente ainda não respondeu. */
   typing: boolean;
-  sessionMenuOpen: boolean;
+  /** Para quem a última pergunta foi. */
+  target: ConversationTarget | null;
   draftText: string;
-  /** Muda quando a sessão/contexto muda; respostas atrasadas de outra seleção são descartadas. */
+  /** Muda a cada pergunta/contexto; respostas atrasadas de outra pergunta são descartadas. */
   replyToken: number;
+  /** Estado do stream da conversa do agente (terminal do Habblaud). */
   connection: StreamStatus;
 }
 
@@ -91,15 +94,12 @@ export interface AppActions {
   toggleRoadmapMenu(): void;
   closeRoadmapMenu(): void;
   selectRoadmap(id: string): void;
-  openConversation(context: ConversationContext, opts?: { sessionId?: string | null; question?: string }): void;
+  openConversation(context: ConversationContext, opts?: { question?: string }): void;
   closeConversation(): void;
   setConversationContext(context: ConversationContext): void;
-  toggleSessionMenu(): void;
-  chooseSession(sessionId: string | null): void;
   setChatDraft(text: string): void;
   ask(question: string): void;
   send(text: string): void;
-  refreshConversation(): void;
   showToast(text: string, tone?: ToastState['tone']): void;
   jumpToCurrent(): void;
 }

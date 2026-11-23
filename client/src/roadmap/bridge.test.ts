@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TerminalEntry } from '../../../shared/types';
-import { repliesTo } from './bridge';
+import { parseTerminalEvent, providerLabel, repliesTo } from './bridge';
 
 const user = (id: string, at: number, text: string): TerminalEntry => ({ kind: 'user', id, at, text });
 const assistant = (id: string, at: number, text: string): TerminalEntry => ({ kind: 'assistant', id, at, text });
@@ -45,5 +45,31 @@ describe('repliesTo', () => {
 
   it('descarta respostas vazias', () => {
     expect(repliesTo([user('u1', 10_500, framed), assistant('a1', 11_000, '   ')], Q).replies).toEqual([]);
+  });
+});
+
+describe('parseTerminalEvent', () => {
+  it('lê as entradas de um init e de um append', () => {
+    const entries = [user('u1', 1, 'oi'), assistant('a1', 2, 'olá')];
+    expect(parseTerminalEvent(JSON.stringify({ agentId: 'x', entries, truncated: false }), 'init')).toEqual(entries);
+    expect(parseTerminalEvent(JSON.stringify(entries), 'append')).toEqual(entries);
+  });
+
+  it('descarta lixo sem lançar: JSON inválido, formato errado e entradas sem texto', () => {
+    expect(parseTerminalEvent('{nao e json', 'init')).toEqual([]);
+    expect(parseTerminalEvent(JSON.stringify({ entries: 'x' }), 'init')).toEqual([]);
+    expect(parseTerminalEvent(JSON.stringify({ kind: 'user' }), 'append')).toEqual([]);
+    expect(parseTerminalEvent(JSON.stringify([{ kind: 'assistant', id: 'a', at: 1 }, { kind: 'user', id: 'u', at: 1, text: 'ok' }]), 'append')).toEqual([user('u', 1, 'ok')]);
+    expect(parseTerminalEvent(undefined, 'init')).toEqual([]);
+  });
+});
+
+describe('providerLabel', () => {
+  it('dá o nome de exibição de todo provider do Habblaud, inclusive o Antigravity', () => {
+    expect(providerLabel('claude')).toBe('Claude Code');
+    expect(providerLabel('antigravity')).toBe('Antigravity');
+    expect(providerLabel('codex')).toBe('Codex');
+    expect(providerLabel('opencode')).toBe('OpenCode');
+    expect(providerLabel('hermes')).toBe('Hermes');
   });
 });

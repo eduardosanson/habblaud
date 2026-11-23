@@ -10,7 +10,6 @@ import {
   capacity,
   countPlans,
   defaultPlanFor,
-  defaultSessionForRoadmap,
   overallCounts,
   phaseById,
   phaseCounts,
@@ -20,7 +19,6 @@ import {
   replaceRoadmaps,
   replaceSessions,
   roadmapById,
-  sessionForPlan,
   roadmapPlans,
   typeCounts,
   workLinks,
@@ -239,16 +237,6 @@ describe('hidratação dos índices', () => {
     replaceRoadmaps([]);
     replaceAgents([]);
     replaceSessions([]);
-  });
-
-  it('só usa sessão que declara acompanhar o roadmap; não cai em sessão de outro roadmap', () => {
-    hydrateLive([fixture], [session]);
-    expect(defaultSessionForRoadmap('praca')?.id).toBe('sess-nina');
-    expect(defaultSessionForRoadmap('atlas-ondas')).toBeUndefined();
-    const active = defaultPlanFor(roadmapById('praca')!);
-    expect(sessionForPlan(active)?.id).toBe('sess-nina');
-    const other = { ...active, roadmapId: 'atlas-ondas' };
-    expect(sessionForPlan(other)).toBeUndefined();
   });
 
   it('substitui roadmap, agentes e sessões pelos dados do pipeline', () => {

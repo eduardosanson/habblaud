@@ -4,6 +4,8 @@
 // token do Habblaud. O token tem só `roadmap.read` e `agent.converse`: nenhuma
 // ferramenta de mutação passa por aqui. Quem move o roadmap é o agente, no pipeline.
 
+import type { Provider } from '../../../shared/types';
+
 const BASE = '/api/roadmap';
 
 export type ApiPipelineStatus = 'backlog' | 'ready' | 'in_progress' | 'blocked' | 'review' | 'done' | 'canceled';
@@ -184,31 +186,6 @@ export interface ApiRoadmapStatus {
   source?: string;
 }
 
-export interface ApiActionReceipt {
-  id: string;
-  action: string;
-  status: 'started' | 'applied' | 'rejected';
-  target: { roadmapId: string; itemId?: string };
-  summary: string;
-  revision: number;
-  error?: ApiErrorPayload;
-}
-
-export interface ApiMessage {
-  id: string;
-  messageId: string;
-  sessionId: string;
-  role: 'user' | 'agent';
-  text: string;
-  context: { roadmapId?: string; itemId?: string };
-  status: string;
-  replyTo: string | null;
-  error: string | null;
-  receivedAt: string;
-  processedAt: string;
-  actions: ApiActionReceipt[];
-}
-
 export interface ApiErrorPayload {
   code: string;
   message: string;
@@ -348,7 +325,7 @@ export interface ApiConverseAccepted {
   agentId: string;
   /** Instante do envio (ms); respostas do agente só valem a partir dele (ver bridge.ts). */
   sentAt: number;
-  route: { reason: 'live' | 'recent' | 'roadmap-live' | 'roadmap-recent'; provider: string; resumable: boolean; profile?: string; role?: string };
+  route: { reason: 'live' | 'recent' | 'roadmap-live' | 'roadmap-recent'; provider: Provider; resumable: boolean; profile?: string; role?: string };
 }
 
 /** Pergunta ao agente real que trabalhou no item. 409 `session_closed` traz `details.route` (a sessão está fechada). */
@@ -358,21 +335,6 @@ export function postConverse(body: { roadmapId: string; itemId: string; text: st
 
 export function listSessions(): Promise<{ sessions: ApiSession[] }> {
   return request('/agent/sessions');
-}
-
-export function listMessages(sessionId: string, limit = 50): Promise<{ sessionId: string; messages: ApiMessage[] }> {
-  return request(`/agent/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}`);
-}
-
-export function postMessage(
-  sessionId: string,
-  body: { messageId: string; text: string; context: { roadmapId: string; itemId?: string } },
-): Promise<{ accepted: boolean; messageId: string; sessionId: string; receivedAt: string }> {
-  return request(`/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
 }
 
 export interface Subscription {
@@ -416,51 +378,3 @@ export function subscribeRoadmap(id: string, handlers: StreamHandlers<ApiRoadmap
   return subscribe(`/roadmaps/${encodeURIComponent(id)}/events`, 'roadmap.changed', handlers);
 }
 
-export interface SessionStreamHandlers {
-  onMessage?(message: ApiMessage): void;
-  onAction?(action: ApiActionReceipt): void;
-  onError?(error: ApiErrorPayload): void;
-  onStatus?(status: StreamStatus): void;
-}
-
-export function subscribeSession(id: string, handlers: SessionStreamHandlers): Subscription {
-  const source = new EventSource(`${BASE}/agent/sessions/${encodeURIComponent(id)}/events`);
-  let closed = false;
-  const status = handlers.onStatus;
-  status?.('connecting');
-  source.addEventListener('open', () => status?.('live'));
-  source.addEventListener('heartbeat', () => status?.('live'));
-  source.addEventListener('message', (event) => {
-    try {
-      handlers.onMessage?.(JSON.parse((event as MessageEvent<string>).data) as ApiMessage);
-    } catch {
-      // Ignora evento malformado.
-    }
-  });
-  source.addEventListener('action', (event) => {
-    try {
-      handlers.onAction?.(JSON.parse((event as MessageEvent<string>).data) as ApiActionReceipt);
-    } catch {
-      // Ignora evento malformado.
-    }
-  });
-  source.addEventListener('error', (event) => {
-    const data = (event as MessageEvent<string>).data;
-    if (data) {
-      try {
-        handlers.onError?.(JSON.parse(data) as ApiErrorPayload);
-        return;
-      } catch {
-        // Cai no status de reconexão abaixo.
-      }
-    }
-    if (!closed) status?.('reconnecting');
-  });
-  return {
-    close() {
-      closed = true;
-      source.close();
-      status?.('closed');
-    },
-  };
-}

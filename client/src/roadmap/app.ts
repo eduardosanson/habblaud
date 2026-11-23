@@ -5,29 +5,25 @@ import { tr } from '../../../shared/i18n';
 import {
   ROADMAPS,
   defaultPlanFor,
-  defaultSessionForRoadmap,
   normalizeSearch,
   phaseById,
   planById,
   planMatches,
   roadmapById,
-  sessionById,
   type ConversationContext,
   type Roadmap,
 } from './data';
-import { mapMessages } from './conversation-data';
+import { parseTerminalEvent, repliesTo } from './bridge';
 import { renderChatBackdrop, renderConversation } from './conversation';
-import { hydrateLive, loadLiveData, sourceFor } from './live';
+import { formatDateTime, hydrateLive, loadLiveData, sourceFor } from './live';
 import {
   PipelineError,
-  listMessages,
-  postMessage,
+  postConverse,
   subscribeRoadmap,
-  subscribeSession,
-  type ApiActionReceipt,
   type Subscription,
 } from './pipeline';
-import type { AppActions, AppState, StreamStatus, ToastState } from './state';
+import type { AppActions, AppState, ChatMessage, StreamStatus, ToastState } from './state';
+import type { TerminalEntry } from '../../../shared/types';
 import { h, icon } from './ui';
 import { renderPage, renderRoadmapIndex, renderTopbar } from './views';
 
@@ -63,11 +59,9 @@ function createInitialState(): AppState {
     conversation: {
       open: false,
       context: { roadmapId: '', kind: 'roadmap' },
-      sessionId: null,
       messages: [],
-      loading: false,
       typing: false,
-      sessionMenuOpen: false,
+      target: null,
       draftText: '',
       replyToken: 0,
       connection: 'closed',
@@ -200,15 +194,12 @@ export function start(): void {
   let toastSeq = 0;
   let lastTriggerId = 'rp-open-conversation';
   let lastRoadmapTriggerId = 'rp-open-roadmaps';
-  let messageToken = 0;
-  let sessionStream: Subscription | null = null;
-  let sessionStreamId: string | null = null;
+  /** Stream da conversa do agente que recebeu a pergunta (terminal do Habblaud). */
+  let bridgeSource: EventSource | null = null;
   let roadmapStream: Subscription | null = null;
   let roadmapStreamId: string | null = null;
   let loadingData = false;
   let reloadQueued = false;
-  /** IDs enviados nesta página; recibos antigos do SSE não geram toast. */
-  const sentMessageIds = new Set<string>();
 
   const selectedRoadmap = (): Roadmap | undefined => roadmapById(state.selectedRoadmapId) ?? ROADMAPS[0];
 
@@ -265,116 +256,71 @@ export function start(): void {
     });
   };
 
-  const connectSessionStream = (): void => {
-    const id = state.conversation.sessionId;
-    if (!id) {
-      sessionStream?.close();
-      sessionStream = null;
-      sessionStreamId = null;
-      setConversationConnection('closed');
+  const closeBridge = (): void => {
+    bridgeSource?.close();
+    bridgeSource = null;
+    setConversationConnection('closed');
+  };
+
+  /**
+   * Acompanha a conversa do agente que recebeu a pergunta e mostra o que ele responde depois dela. A conversa vem do
+   * terminal do próprio Habblaud (/api/agents/:id/terminal); se ele estiver desligado, a pergunta já foi entregue e a
+   * resposta fica na sessão do agente.
+   */
+  const followAgent = (agentId: string, question: string, sentAt: number, token: number, author: ChatMessage['author']): void => {
+    closeBridge();
+    let source: EventSource;
+    try {
+      source = new EventSource(`/api/agents/${encodeURIComponent(agentId)}/terminal`);
+    } catch {
       return;
     }
-    if (sessionStream && sessionStreamId === id) return;
-    sessionStream?.close();
-    sessionStreamId = id;
-    sessionStream = subscribeSession(id, {
-      onMessage: (message) => {
-        if (state.conversation.sessionId !== id) return;
-        if (message.role === 'user') {
-          state.conversation.typing = true;
-        } else {
+    bridgeSource = source;
+    setConversationConnection('connecting');
+    let entries: TerminalEntry[] = [];
+    const apply = (): void => {
+      if (state.conversation.replyToken !== token) return;
+      const { replies } = repliesTo(entries, { question, sentAt });
+      const known = new Set(state.conversation.messages.map((message) => message.id));
+      let added = false;
+      for (const reply of replies) {
+        const id = `reply-${token}-${reply.id}`;
+        if (known.has(id)) continue;
+        state.conversation.messages.push({ id, role: 'agent', ...(author ? { author } : {}), text: reply.text, at: formatDateTime(new Date(reply.at).toISOString()) });
+        added = true;
+      }
+      if (added) state.conversation.typing = false;
+      if (added) render();
+    };
+    source.addEventListener('open', () => {
+      if (bridgeSource === source) setConversationConnection('live');
+    });
+    source.addEventListener('init', (event) => {
+      if (bridgeSource !== source) return;
+      entries = parseTerminalEvent((event as MessageEvent).data, 'init');
+      apply();
+    });
+    source.addEventListener('append', (event) => {
+      if (bridgeSource !== source) return;
+      entries = entries.concat(parseTerminalEvent((event as MessageEvent).data, 'append'));
+      apply();
+    });
+    source.addEventListener('error', () => {
+      if (bridgeSource !== source) return;
+      if (source.readyState === 2) {
+        // O servidor recusou (terminal desligado, agente saiu) ou o navegador desistiu.
+        source.close();
+        bridgeSource = null;
+        setConversationConnection('closed');
+        if (state.conversation.replyToken === token && state.conversation.typing) {
           state.conversation.typing = false;
-        }
-        void refreshMessages({ quiet: true });
-      },
-      onAction: (action) => {
-        if (state.conversation.sessionId !== id) return;
-        // O SSE repete o histórico ao conectar. Só a mensagem mais nova, ligada a um
-        // messageId enviado por esta página, vira toast/recarga em `refreshMessages`.
-        if (action.status === 'started') {
-          state.conversation.typing = true;
+          actions.showToast(tr('Não foi possível acompanhar a resposta do agente. A pergunta foi entregue: veja a resposta na sessão dele.'), 'error');
           render();
         }
-        void refreshMessages({ quiet: true });
-      },
-      onError: (error) => {
-        if (state.conversation.sessionId !== id) return;
-        actions.showToast(tr('Erro do agente: {0}', [error.message]), 'error');
-        state.conversation.typing = false;
-        render();
-      },
-      onStatus: (status) => {
-        if (status === 'closed') return;
-        setConversationConnection(status);
-      },
-    });
-  };
-
-  const handleAction = (action: ApiActionReceipt): void => {
-    if (action.status === 'applied') {
-      actions.showToast(tr('Ação aplicada: {0}', [action.summary || action.action]), 'ok');
-      void reloadData(false);
-      return;
-    }
-    if (action.status === 'rejected') {
-      actions.showToast(tr('Ação recusada: {0}', [action.error?.message ?? (action.summary || action.action)]), 'error');
-      return;
-    }
-    state.conversation.typing = true;
-    render();
-  };
-
-  const chooseSession = (roadmap: Roadmap): string | null => defaultSessionForRoadmap(roadmap.id)?.id ?? null;
-
-  const ensureSession = (): void => {
-    const roadmap = selectedRoadmap();
-    if (!roadmap) return;
-    const current = sessionById(state.conversation.sessionId);
-    if (!current || !current.roadmapIds.includes(roadmap.id)) {
-      state.conversation.sessionId = chooseSession(roadmap);
-    }
-    if (state.conversation.open) connectSessionStream();
-  };
-
-  const refreshMessages = async (opts: { quiet?: boolean } = {}): Promise<void> => {
-    const sessionId = state.conversation.sessionId;
-    if (!sessionId) {
-      state.conversation.messages = [];
-      state.conversation.loading = false;
-      render();
-      return;
-    }
-    const token = ++messageToken;
-    const session = sessionById(sessionId);
-    if (!opts.quiet) {
-      state.conversation.loading = true;
-      render();
-    }
-    try {
-      const { messages } = await listMessages(sessionId, 100);
-      if (token !== messageToken || state.conversation.sessionId !== sessionId) return;
-      const mapped = mapMessages(messages, session);
-      state.conversation.messages = mapped;
-      state.conversation.loading = false;
-      state.conversation.typing = messages.some(
-        (message) =>
-          message.role === 'user' &&
-          (message.status === 'queued' || message.status === 'processing') &&
-          !messages.some((reply) => reply.role === 'agent' && reply.replyTo === message.messageId),
-      );
-      const fresh = mapped.filter((message) => message.role === 'agent' && message.replyTo && sentMessageIds.has(message.replyTo));
-      for (const reply of fresh) {
-        sentMessageIds.delete(reply.replyTo!);
-        for (const action of reply.actions ?? []) handleAction(action);
+      } else {
+        setConversationConnection('reconnecting');
       }
-      render();
-    } catch (error) {
-      if (token !== messageToken) return;
-      state.conversation.loading = false;
-      state.conversation.typing = false;
-      actions.showToast(tr('Não foi possível ler a conversa: {0}', [describeError(error)]), 'error');
-      render();
-    }
+    });
   };
 
   const reloadData = async (initial: boolean): Promise<void> => {
@@ -405,12 +351,7 @@ export function start(): void {
       state.ready = true;
       state.loading = false;
       state.loadError = null;
-      ensureSession();
       connectRoadmapStream();
-      if (state.conversation.open) {
-        connectSessionStream();
-        void refreshMessages({ quiet: true });
-      }
       render();
     } catch (error) {
       const detail = describeError(error);
@@ -473,8 +414,7 @@ export function start(): void {
 
   const focusConversationTarget = (): void => {
     window.requestAnimationFrame(() => {
-      const target = state.conversation.sessionId ? document.getElementById('rp-composer-input') : document.getElementById('rp-session-btn');
-      target?.focus({ preventScroll: true });
+      document.getElementById('rp-composer-input')?.focus({ preventScroll: true });
     });
   };
 
@@ -488,6 +428,15 @@ export function start(): void {
     }
     const plan = planById(roadmap.id, context.id ?? '');
     return { roadmapId: roadmap.id, kind: 'plan', ...(plan ? { id: plan.apiId } : context.id ? { id: context.id } : {}) };
+  };
+
+  const resetConversation = (): void => {
+    closeBridge();
+    state.conversation.messages = [];
+    state.conversation.typing = false;
+    state.conversation.target = null;
+    state.conversation.draftText = '';
+    state.conversation.replyToken += 1;
   };
 
   const actions: AppActions = {
@@ -576,7 +525,6 @@ export function start(): void {
       if (trigger instanceof HTMLElement && trigger.id) lastRoadmapTriggerId = trigger.id;
       state.roadmapIndexOpen = true;
       state.roadmapMenuOpen = false;
-      state.conversation.sessionMenuOpen = false;
       render();
       window.requestAnimationFrame(() => document.getElementById('rp-roadmap-index-close')?.focus());
     },
@@ -607,9 +555,9 @@ export function start(): void {
       state.roadmapIndexOpen = false;
       state.roadmapMenuOpen = false;
       if (state.conversation.open) {
+        // Outro roadmap, outra conversa: a pergunta de um não segue para o outro.
         state.conversation.context = { roadmapId: roadmap.id, kind: 'roadmap' };
-        ensureSession();
-        void refreshMessages({ quiet: true });
+        resetConversation();
       }
       render();
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -629,28 +577,13 @@ export function start(): void {
           state.expandedPhases.add(plan.phaseId);
         }
       }
-      const candidate = opts?.sessionId !== undefined ? opts.sessionId : state.conversation.sessionId;
-      const candidateSession = candidate ? sessionById(candidate) : undefined;
-      const nextSession = candidateSession?.roadmapIds.includes(roadmap.id) ? candidate : chooseSession(roadmap);
-      state.conversation = {
-        ...state.conversation,
-        open: true,
-        context: resolved,
-        sessionId: nextSession,
-        messages: [],
-        loading: Boolean(nextSession),
-        typing: false,
-        sessionMenuOpen: false,
-        draftText: '',
-        replyToken: state.conversation.replyToken + 1,
-        connection: nextSession ? 'connecting' : 'closed',
-      };
+      state.conversation.open = true;
+      state.conversation.context = resolved;
+      resetConversation();
       state.roadmapIndexOpen = false;
       state.roadmapMenuOpen = false;
-      connectSessionStream();
       render();
       focusConversationTarget();
-      if (nextSession) void refreshMessages();
       if (opts?.question) {
         const question = opts.question;
         window.setTimeout(() => {
@@ -661,13 +594,9 @@ export function start(): void {
 
     closeConversation() {
       state.conversation.open = false;
-      state.conversation.sessionMenuOpen = false;
       state.conversation.typing = false;
       state.conversation.replyToken += 1;
-      sessionStream?.close();
-      sessionStream = null;
-      sessionStreamId = null;
-      state.conversation.connection = 'closed';
+      closeBridge();
       render();
       window.requestAnimationFrame(() => document.getElementById(lastTriggerId)?.focus({ preventScroll: true }));
     },
@@ -684,30 +613,8 @@ export function start(): void {
         }
       }
       state.conversation.context = resolved;
-      state.conversation.sessionMenuOpen = false;
       render();
       focusConversationTarget();
-    },
-
-    toggleSessionMenu() {
-      state.conversation.sessionMenuOpen = !state.conversation.sessionMenuOpen;
-      render();
-    },
-
-    chooseSession(sessionId) {
-      messageToken += 1;
-      state.conversation.sessionId = sessionId;
-      state.conversation.sessionMenuOpen = false;
-      state.conversation.messages = [];
-      state.conversation.loading = Boolean(sessionId);
-      state.conversation.typing = false;
-      state.conversation.draftText = '';
-      state.conversation.replyToken += 1;
-      state.conversation.connection = sessionId ? 'connecting' : 'closed';
-      connectSessionStream();
-      render();
-      focusConversationTarget();
-      if (sessionId) void refreshMessages();
     },
 
     setChatDraft(text) {
@@ -721,42 +628,36 @@ export function start(): void {
     send(text) {
       const value = text.trim();
       if (!value) return;
-      const session = sessionById(state.conversation.sessionId);
-      if (!session) {
-        actions.showToast(tr('Escolha uma sessão do pipeline para conversar.'), 'error');
-        return;
-      }
       const context = state.conversation.context;
       const plan = context.kind === 'plan' && context.id ? planById(context.roadmapId, context.id) : undefined;
-      const messageId = uuid();
-      sentMessageIds.add(messageId);
+      if (!plan) {
+        actions.showToast(tr('Escolha um plano: a pergunta vai para o agente que trabalhou nele.'), 'error');
+        return;
+      }
       const token = ++state.conversation.replyToken;
+      closeBridge();
+      const message: ChatMessage = { id: `user-${token}-${uuid()}`, role: 'user', text: value, at: formatDateTime(new Date().toISOString()) };
+      state.conversation.messages.push(message);
       state.conversation.draftText = '';
       state.conversation.typing = true;
       render();
-      void postMessage(session.id, {
-        messageId,
-        text: value,
-        context: {
-          roadmapId: context.roadmapId,
-          ...(plan ? { itemId: plan.apiId } : {}),
-        },
-      })
-        .then(() => {
+      void postConverse({ roadmapId: context.roadmapId, itemId: plan.apiId, text: value })
+        .then((accepted) => {
           if (state.conversation.replyToken !== token) return;
-          void refreshMessages({ quiet: true });
+          const route = accepted.route;
+          state.conversation.target = { agentId: accepted.agentId, provider: route.provider, ...(route.profile ? { profile: route.profile } : {}), ...(route.role ? { role: route.role } : {}), resumable: route.resumable };
+          followAgent(accepted.agentId, value, accepted.sentAt, token, { name: route.profile ?? route.provider, provider: route.provider });
+          render();
         })
         .catch((error: unknown) => {
           if (state.conversation.replyToken !== token) return;
-          sentMessageIds.delete(messageId);
+          // Não foi entregue: some da conversa e volta para o campo, para a pessoa tentar de novo.
+          state.conversation.messages = state.conversation.messages.filter((item) => item.id !== message.id);
+          state.conversation.draftText = value;
           state.conversation.typing = false;
           actions.showToast(tr('O agente não recebeu a mensagem: {0}', [describeError(error)]), 'error');
           render();
         });
-    },
-
-    refreshConversation() {
-      void refreshMessages();
     },
 
     showToast(text, tone = 'info') {
@@ -798,11 +699,6 @@ export function start(): void {
     }
     if (state.roadmapMenuOpen) {
       actions.closeRoadmapMenu();
-      return;
-    }
-    if (state.conversation.sessionMenuOpen) {
-      state.conversation.sessionMenuOpen = false;
-      render();
       return;
     }
     if (state.conversation.open) {

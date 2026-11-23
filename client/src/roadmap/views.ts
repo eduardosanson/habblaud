@@ -22,7 +22,6 @@ import {
   planStepCounts,
   roadmapById,
   roadmapPlans,
-  sessionForPlan,
   typeCounts,
   workLinks,
   workTypeLabel,
@@ -82,8 +81,7 @@ function agentsFor(roadmap: Roadmap): Agent[] {
 }
 
 function chatPlan(actions: AppActions, plan: Plan): void {
-  const session = sessionForPlan(plan);
-  actions.openConversation({ roadmapId: plan.roadmapId, kind: 'plan', id: plan.id }, { sessionId: session?.id ?? null });
+  actions.openConversation({ roadmapId: plan.roadmapId, kind: 'plan', id: plan.id });
 }
 
 function defaultConversationContext(state: AppState): { roadmapId: string; kind: 'roadmap' } | { roadmapId: string; kind: 'phase'; id: string } | { roadmapId: string; kind: 'plan'; id: string } {
@@ -720,10 +718,7 @@ function renderAgentsNow(roadmap: Roadmap, active: Plan[], blocked: Plan[], acti
                 attrs: { type: 'button', 'aria-label': tr('Perguntar sobre {0}', [plan.id]), title: tr('Perguntar sobre {0}', [plan.id]) },
                 on: {
                   click: () =>
-                    actions.openConversation(
-                      { roadmapId: roadmap.id, kind: 'plan', id: plan.id },
-                      { sessionId: session?.id ?? null },
-                    ),
+                    actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: plan.id }),
                 },
               },
               icon('chat'),
@@ -917,7 +912,7 @@ function renderAttention(roadmap: Roadmap, blocked: Plan[], actions: AppActions)
             {
               class: 'rp-icon-btn rp-icon-btn--sm',
               attrs: { type: 'button', 'aria-label': tr('Conversar sobre o bloqueio de {0}', [plan.id]), title: tr('Conversar sobre o bloqueio') },
-              on: { click: () => actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: plan.id }, { sessionId: sessionForPlan(plan)?.id ?? null }) },
+              on: { click: () => actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: plan.id }) },
             },
             icon('chat'),
           ),
@@ -1622,7 +1617,6 @@ function renderPlanDetail(state: AppState, actions: AppActions, roadmap: Roadmap
   const plan = planById(roadmap.id, state.selectedPlanId) ?? defaultPlanFor(roadmap);
   const phase = phaseById(roadmap.id, plan.phaseId)!;
   const agent = ownerOf(plan);
-  const session = sessionForPlan(plan);
   const counts = planStepCounts(plan);
   const doneCriteria = plan.criteria.filter((c) => c.done).length;
   const blockedDeps = plan.dependencies.filter((d) => d.planId && d.status === 'blocked');
@@ -1666,7 +1660,7 @@ function renderPlanDetail(state: AppState, actions: AppActions, roadmap: Roadmap
             class: 'rp-btn rp-btn--sm',
             id: `rp-chat-${plan.id}`,
             attrs: { type: 'button' },
-            on: { click: () => actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: plan.id }, { sessionId: session?.id ?? null }) },
+            on: { click: () => actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: plan.id }) },
           },
           icon('chat'),
           h('span', { text: tr('Perguntar sobre este plano') }),
@@ -1757,7 +1751,7 @@ function renderBlockCallout(plan: Plan, actions: AppActions): HTMLElement {
         {
           class: 'rp-btn rp-btn--sm',
           attrs: { type: 'button' },
-          on: { click: () => actions.openConversation({ roadmapId: plan.roadmapId, kind: 'plan', id: plan.id }, { sessionId: sessionForPlan(plan)?.id ?? null }) },
+          on: { click: () => actions.openConversation({ roadmapId: plan.roadmapId, kind: 'plan', id: plan.id }) },
         },
         icon('chat'),
         h('span', { text: tr('Conversar sobre o bloqueio') }),
@@ -2020,7 +2014,6 @@ export function renderWork(state: AppState, actions: AppActions): HTMLElement {
   const future = allFuture.slice(0, 3);
   const focus = active[0] ?? defaultPlanFor(roadmap);
   const focusAgent = ownerOf(focus);
-  const focusSession = sessionForPlan(focus);
   const focusStep = nextPendingStep(focus);
 
   return h(
@@ -2049,7 +2042,7 @@ export function renderWork(state: AppState, actions: AppActions): HTMLElement {
             {
               class: 'rp-btn',
               attrs: { type: 'button' },
-              on: { click: () => actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: focus.id }, { sessionId: focusSession?.id ?? null }) },
+              on: { click: () => actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: focus.id }) },
             },
             icon('chat'),
             h('span', { text: tr('Perguntar a {0}', [focusAgent?.name ?? tr('o agente')]) }),
@@ -2118,7 +2111,6 @@ function renderWorkLane(title: string, count: number, status: string, cards: HTM
 
 function renderWorkCard(plan: Plan, actions: AppActions): HTMLElement {
   const agent = ownerOf(plan);
-  const session = sessionForPlan(plan);
   const counts = planStepCounts(plan);
   const step = nextPendingStep(plan);
   const blocking = plan.dependencies.filter((d) => d.blocking);
@@ -2201,7 +2193,7 @@ function renderWorkCard(plan: Plan, actions: AppActions): HTMLElement {
           attrs: { type: 'button', 'aria-label': tr('Perguntar sobre {0}', [plan.id]), title: tr('Perguntar sobre {0}', [plan.id]) },
           on: {
             click: () =>
-              actions.openConversation({ roadmapId: plan.roadmapId, kind: 'plan', id: plan.id }, { sessionId: session?.id ?? null }),
+              actions.openConversation({ roadmapId: plan.roadmapId, kind: 'plan', id: plan.id }),
           },
         },
         icon('chat'),

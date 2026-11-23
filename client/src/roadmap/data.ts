@@ -246,7 +246,6 @@ export const ALL_PLANS: Plan[] = [];
 export const PLAN_BY_ID = new Map<string, Plan>();
 export const PHASE_BY_ID = new Map<string, Phase>();
 export const SESSIONS: Session[] = [];
-export const SESSION_BY_ID = new Map<string, Session>();
 
 export function replaceAgents(agents: Agent[]): void {
   AGENT_LIST.splice(0, AGENT_LIST.length, ...agents);
@@ -256,8 +255,6 @@ export function replaceAgents(agents: Agent[]): void {
 
 export function replaceSessions(sessions: Session[]): void {
   SESSIONS.splice(0, SESSIONS.length, ...sessions);
-  SESSION_BY_ID.clear();
-  for (const session of sessions) SESSION_BY_ID.set(session.id, session);
 }
 
 export function replaceRoadmaps(roadmaps: Roadmap[]): void {
@@ -365,25 +362,6 @@ export function phaseById(roadmapId: string, id: string): Phase | undefined {
 
 export function agentById(id: string): Agent | undefined {
   return AGENTS[id];
-}
-
-export function sessionById(id: string | null | undefined): Session | undefined {
-  return id ? SESSION_BY_ID.get(id) : undefined;
-}
-
-/**
- * Sessão padrão para conversar sobre um roadmap: só vale sessão que declara acompanhar
- * aquele roadmap. Sem vínculo, não existe sessão — nada de usar a sessão de outro roadmap.
- */
-export function defaultSessionForRoadmap(roadmapId: string): Session | undefined {
-  const linked = SESSIONS.filter((session) => session.roadmapIds.includes(roadmapId));
-  return linked.find((session) => session.capabilities.includes('roadmap.write')) ?? linked[0];
-}
-
-/** Sessão que já executa o item e acompanha o roadmap; senão, a sessão padrão vinculada. */
-export function sessionForPlan(plan: Plan): Session | undefined {
-  const own = SESSIONS.find((session) => session.agentId === plan.ownerId && session.roadmapIds.includes(plan.roadmapId));
-  return own ?? defaultSessionForRoadmap(plan.roadmapId);
 }
 
 export function normalizeSearch(value: string): string {

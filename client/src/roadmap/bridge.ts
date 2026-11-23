@@ -3,7 +3,7 @@
 // A pergunta entra na sessão do agente como se a pessoa a tivesse digitado (server/roadmap/converse.ts), e o terminal
 // do Habblaud já transmite essa conversa. Aqui só se acha, no meio dela, a pergunta feita e o que o agente respondeu
 // depois. O que identifica a pergunta é o TEXTO dela (o cabeçalho que o servidor põe antes muda com o idioma).
-import type { TerminalEntry } from '../../../shared/types';
+import type { Provider, TerminalEntry } from '../../../shared/types';
 
 /** O relógio do agente pode diferir do desta página: a pergunta vale se apareceu até 5 s antes do envio. */
 export const CLOCK_SKEW_MS = 5_000;
@@ -40,4 +40,41 @@ export function repliesTo(entries: readonly TerminalEntry[], sent: { question: s
     if (entry.kind === 'assistant' && entry.text.trim()) replies.push({ id: entry.id, text: entry.text, at: entry.at });
   }
   return { delivered: true, replies };
+}
+
+type ConversationEntry = Extract<TerminalEntry, { kind: 'user' | 'assistant' }>;
+
+function isConversationEntry(value: unknown): value is ConversationEntry {
+  if (!value || typeof value !== 'object') return false;
+  const e = value as Record<string, unknown>;
+  return (e.kind === 'user' || e.kind === 'assistant') && typeof e.id === 'string' && typeof e.at === 'number' && Number.isFinite(e.at) && typeof e.text === 'string';
+}
+
+/**
+ * Lê um evento `init` (`{entries}`) ou `append` (lista) do stream do terminal do agente e devolve só a conversa
+ * (usuário e agente). Dado inválido vira lista vazia: um frame ruim nunca derruba a gaveta.
+ */
+export function parseTerminalEvent(data: unknown, event: 'init' | 'append'): TerminalEntry[] {
+  if (typeof data !== 'string') return [];
+  let json: unknown;
+  try {
+    json = JSON.parse(data);
+  } catch {
+    return [];
+  }
+  const list = event === 'init' ? (json && typeof json === 'object' ? (json as { entries?: unknown }).entries : undefined) : json;
+  return Array.isArray(list) ? list.filter(isConversationEntry) : [];
+}
+
+const PROVIDER_LABEL: Readonly<Record<Provider, string>> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+  hermes: 'Hermes',
+  antigravity: 'Antigravity',
+};
+
+/** Nome de exibição do provider do agente que respondeu (a página do roadmap tem o próprio tipo, sem Antigravity). */
+export function providerLabel(provider: Provider): string {
+  return PROVIDER_LABEL[provider];
 }
