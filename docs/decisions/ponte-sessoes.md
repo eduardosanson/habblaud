@@ -18,3 +18,9 @@
 - Decisão: `POST /api/roadmap/converse` vive dentro do handler do roadmap (herda porta local, token e allowlist) e só existe com as mensagens do escritório ligadas; sem sessão viva responde 409 `session_closed` em vez de inventar resposta.
 - Decisão: o fallback "quem trabalhou no roadmap" existe no roteador, mas H4 só alimenta o nível do item — agregar por item exigiria varrer o snapshot; fica para quando o pipeline expuser uma rota do roadmap inteiro.
 - Risco aceito: a entrega só confirma "entrou na fila da sessão"; a resposta do agente (H5) ainda não volta para a gaveta.
+
+## BUILD → PR — 2026-11-23
+
+- Decisão: o proxy fecha só mensagens e eventos do pipeline e mantém `GET /api/agent/sessions` (o plano do pipeline mantém o cadastro de sessões, RF09, e a página usa para os chips de agente) — o CA06 do spec pedia fechar todo `/api/agent/*`.
+- Decisão: a gaveta mostra a resposta lendo o terminal do próprio Habblaud (`/api/agents/:id/terminal`) em vez de um leitor de transcrição novo; sem o terminal, a pergunta continua entregue e a página avisa.
+- Risco aceito: H6 (reabrir sessão fechada) fica de fora e o E2E antigo não foi reescrito nem executado; o caminho de sessão viva só foi testado com agentes e pipeline falsos.

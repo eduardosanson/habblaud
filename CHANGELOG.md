@@ -10,12 +10,24 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Alterado
+
+- **A conversa do roadmap fala com o agente real que trabalhou no plano.** Antes a pergunta ia para um agente dentro do
+  Hermes Pipeline, que não sabia o que os outros agentes fizeram nesta máquina. Agora o Habblaud descobre pelo registro
+  do pipeline quem trabalhou no plano (sessão viva primeiro, senão a mais recente), entrega a pergunta na sessão dele
+  pela fila de mensagens do escritório e mostra a resposta lida da conversa da própria sessão. Sem LLM no roteamento;
+  se a sessão estiver fechada, a gaveta avisa em vez de inventar resposta. O menu de sessões e os recibos de ação do
+  pipeline saíram da gaveta, e as sugestões viraram perguntas sobre o plano.
+
 ### Corrigido
 
 - **Roadmap abre de novo com o pipeline que só registra.** A página `/roadmap` mostrava "Não foi possível ler o
   roadmap — 404" porque o pipeline removeu as rotas de conversa (`/api/agent/sessions`) e o Habblaud tratava esse 404
   como falha total. Agora esse 404 vale "sem sessões": leitura e progresso voltam, e só a conversa com o agente fica
   indisponível até a ponte de sessões. Outros erros (token inválido, servidor fora) continuam aparecendo.
+- **Proxy do roadmap só aceita leitura.** Qualquer rota permitida aceitava `POST` e repassava ao pipeline; agora o
+  proxy só aceita `GET` (o `POST` da conversa tem rota própria, `/api/roadmap/converse`). A lista `HABBLAUD_ROADMAP_IDS`
+  também passa a valer para as rotas de execuções e participantes do item.
 - **Configuração remota do roadmap mantida entre reinícios.** O Habblaud agora carrega `.env` da raiz do projeto ao
   subir no Node, persiste URL/IDs do roadmap em `<dataDir>/roadmap.json` junto ao `roadmap-token` somente após abrir a
   porta, relê alterações de `.env`/disco em tempo real e avisa quando um `HABBLAUD_ROADMAP_TOKEN` antigo do shell

@@ -38,7 +38,7 @@ repositório do pipeline). O Habblaud é o integrador: descobre quem trabalhou n
 - RF05 (H5): a resposta vem da transcrição da sessão (fontes existentes), não de `/api/agent/*`.
 - RF06 (H6): sessão fechada só é reaberta onde houver mecanismo verificado por harness; sem mecanismo, a gaveta
   explica "sessão fechada, abra-a" e nunca inventa resposta.
-- RF07 (H7): a gaveta usa o roteador; o proxy deixa de aceitar `/api/agent/*`.
+- RF07 (H7): a gaveta usa o roteador; o proxy deixa de aceitar as mensagens e os eventos das sessões do pipeline.
 - RF08 (H8): docs, CHANGELOG, i18n (`tr()`), E2E.
 
 ## Requisitos Não-Funcionais
@@ -53,7 +53,7 @@ repositório do pipeline). O Habblaud é o integrador: descobre quem trabalhou n
 - CA03: dado dois participantes, um com agente vivo, quando roteado, então escolhe o vivo.
 - CA04: dado item sem `participants`, quando roteado, então usa o mais recente do roadmap; sem nenhum, `null` + motivo.
 - CA05: dado `execution.sessionId='run:...'` sem `resume`, quando roteado, então NÃO trata como sessão do harness.
-- CA06: o proxy bloqueia `/api/agent/*` depois do H7 e deixa passar `participants`/`executions`.
+- CA06: o proxy bloqueia as mensagens e eventos das sessões do pipeline (`GET /api/agent/sessions` segue aberto, o pipeline o mantém) e deixa passar `participants`/`executions`.
 
 ## Definition of Done
 - [ ] Código compilando; testes unitários passando; `npm run typecheck` e `npm run i18n:check` verdes

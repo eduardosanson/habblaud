@@ -1,5 +1,9 @@
 # Contrato — Roadmap no Hermes Pipeline, Habblaud como consumidor
 
+> **Desatualizado na parte de conversa.** A seção 4 (API de conversa) e a seção 5 (agente dentro do pipeline) não valem
+> mais: o pipeline passou a ser só registro e a conversa vai direto à sessão real do agente. Veja
+> [`hermes-pipeline-registry-prompt.md`](hermes-pipeline-registry-prompt.md) e `docs/plans/ponte-sessoes/spec.md`.
+
 Status: proposta para a implementação no projeto `hermes-pipeline`.
 Princípio: o **Hermes Pipeline** é a fonte da verdade e o orquestrador. O **agente** é quem movimenta o
 roadmap, sempre por ferramentas do pipeline. O **Habblaud** lê o roadmap e conversa com o agente; ele não

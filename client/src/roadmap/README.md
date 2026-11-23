@@ -1,7 +1,8 @@
 # Roadmap do Habblaud
 
-Página `/roadmap`: leitura dos roadmaps do **Hermes Pipeline** e conversa com o agente que os movimenta. O Habblaud
-não cria, edita, move, estima nem arquiva nada; ele lê snapshots/SSE, mostra recibos de ação e envia mensagens.
+Página `/roadmap`: leitura dos roadmaps do **Hermes Pipeline** e conversa com o agente que trabalhou em cada plano. O
+Habblaud não cria, edita, move, estima nem arquiva nada; ele lê snapshots/SSE e entrega perguntas à sessão real do
+agente. O pipeline só registra: não roda LLM nem hospeda conversa.
 
 ## Como abrir
 
@@ -13,7 +14,7 @@ HABBLAUD_ROADMAP_TOKEN=... npm run dev
 ```
 
 - `HABBLAUD_ROADMAP_URL` aponta para o Hermes Pipeline (padrão `http://127.0.0.1:49500`).
-- `HABBLAUD_ROADMAP_TOKEN` é o token do Habblaud no pipeline (`roadmap.read` + `agent.converse`). O
+- `HABBLAUD_ROADMAP_TOKEN` é o token do Habblaud no pipeline (só `roadmap.read`; a conversa não passa pelo pipeline). O
   `PIPELINE_HABBLAUD_TOKEN` também é aceito como conveniência.
 - `HABBLAUD_ROADMAP_IDS=atlas-ondas` restringe a página aos roadmaps reais; sem a variável, todos os roadmaps do
   pipeline aparecem.
@@ -32,20 +33,32 @@ HABBLAUD_ROADMAP_TOKEN=... npm run dev
 - **Backlog**: épicos (fases), histórias, tasks e bugs com tipo, status, peso XS–XL, estimativa P50/P80 em tokens,
   dias humanos derivados, realizado, execução e vínculos canônicos com o lado inverso derivado.
 - **Trabalho agora**: foco, faixas de em andamento/bloqueado/a seguir, caminho do bloqueio e o que o marco espera.
-- **Conversa**: sessões e permissões do pipeline, histórico real, comandos de exemplo, respostas do agente e recibos
-  `applied`/`rejected` com a revisão resultante. Sem UI otimista: ao receber uma ação aplicada, a página refaz o snapshot.
+- **Conversa**: abra um plano e pergunte. O Habblaud descobre pelo registro do pipeline quem trabalhou no plano, entrega
+  a pergunta na sessão desse agente e mostra o que ele responde depois (lido da conversa da própria sessão, pelo
+  terminal do Habblaud). Quando o agente mover o roadmap, a página refaz o snapshot pelo evento do pipeline.
 
-## Sessões
+## Como a pergunta chega ao agente
 
-A conversa só oferece sessões que declaram aquele roadmap em `roadmapIds`. Sem sessão vinculada, a página mostra
-"Nenhuma sessão vinculada a este roadmap" e não cai na sessão de outro roadmap. O agente do pipeline continua sendo o
-único escritor.
+`POST /api/roadmap/converse` (só local) com `{roadmapId, itemId, text}`:
+
+1. Lê `participants` do item no pipeline; se o pipeline ainda não tem essa rota, usa o histórico de `executions`.
+2. Escolhe a sessão por regra fixa, sem LLM (`server/roadmap/router.ts`): o participante que está vivo no escritório e
+   aceita mensagem; senão o mais recente. A sessão vem de `resume` (pipeline novo) ou de `workerSessionId` + `provider`
+   da execução. Id de run do pipeline e `workerSessionId` vazio nunca viram sessão.
+3. Entrega pela fila de mensagens do escritório (`server/messages`), como se a pessoa tivesse digitado.
+4. Respostas: `202` entregue; `409 session_closed` sessão fechada (`details.route.resumable` diz se há como reabrir);
+   `404 no_session` ninguém registrado trabalhou no plano; `409 unavailable` a sessão não aceita mensagem agora.
+
+O `argv` de retomada que o pipeline registra é só dado: o Habblaud nunca o executa (`server/roadmap/harness.ts` monta o
+comando por lista fixa). Hoje só Claude Code (`claude --resume`) e Codex (`codex resume`) têm retomada verificada, e a
+gaveta ainda não reabre sessão sozinha: ela avisa que a sessão está fechada.
 
 ## Fronteira
 
-- **Hermes Pipeline**: dono de roadmaps, itens, status, vínculos, peso, estimativa, orquestração e persistência.
-- **Agente**: recebe a mensagem, chama as ferramentas do pipeline e é o único escritor.
-- **Habblaud**: proxy de leitura/conversa no servidor, renderização, filtros, troca de roadmap e recibos. Nenhuma
+- **Hermes Pipeline**: dono de roadmaps, itens, status, vínculos, peso, estimativa e persistência; registra quem
+  executou cada item. Não roda LLM.
+- **Agente** (sessão real no escritório): responde e, se tiver a ferramenta, move o roadmap pelo MCP do pipeline.
+- **Habblaud**: proxy somente leitura, roteamento da pergunta, renderização, filtros e troca de roadmap. Nenhuma
   ferramenta de mutação é exposta ao navegador.
 
 O contrato completo está em
@@ -62,6 +75,10 @@ npx vitest run client/src/roadmap/data.test.ts
 # proxies, configuração e permissões do servidor
 npx vitest run server/roadmap/config.test.ts server/roadmap/proxy.test.ts
 
+# ponte de sessões: harness, roteador, /converse e leitura da resposta (sem rede)
+npx vitest run server/roadmap/harness.test.ts server/roadmap/router.test.ts server/roadmap/converse.test.ts \
+  client/src/roadmap/bridge.test.ts client/src/roadmap/pipeline.test.ts
+
 # contrato direto do pipeline (usa os roadmaps de seed do pipeline)
 PIPELINE_HABBLAUD_TOKEN=... npx tsx scripts/roadmap-pipeline-smoke.ts
 
@@ -74,6 +91,11 @@ PIPELINE_REPO=... node scripts/roadmap-e2e.mjs
 O E2E usa o servidor de produção do Habblaud e o proxy real, sem token no navegador. Ele confirma que a página não
 mostra roadmaps/sessões de seed, que a conversa só usa sessão vinculada ao roadmap e que uma ação do agente atualiza o
 snapshot.
+
+> **Pendente:** `scripts/roadmap-e2e.mjs` e `scripts/roadmap-pipeline-smoke.ts` ainda exercitam a conversa antiga, com o
+> agente dentro do pipeline (`/api/agent/sessions/:id/messages`), que o proxy do Habblaud já não repassa e que o pipeline
+> vai remover. Precisam ser reescritos para a ponte (pergunta por `/api/roadmap/converse` a uma sessão real). Não foram
+> executados nesta mudança.
 
 ## Arquivos
 
