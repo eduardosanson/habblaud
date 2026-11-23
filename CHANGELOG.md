@@ -12,6 +12,10 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Roadmap abre de novo com o pipeline que só registra.** A página `/roadmap` mostrava "Não foi possível ler o
+  roadmap — 404" porque o pipeline removeu as rotas de conversa (`/api/agent/sessions`) e o Habblaud tratava esse 404
+  como falha total. Agora esse 404 vale "sem sessões": leitura e progresso voltam, e só a conversa com o agente fica
+  indisponível até a ponte de sessões. Outros erros (token inválido, servidor fora) continuam aparecendo.
 - **Configuração remota do roadmap mantida entre reinícios.** O Habblaud agora carrega `.env` da raiz do projeto ao
   subir no Node, persiste URL/IDs do roadmap em `<dataDir>/roadmap.json` junto ao `roadmap-token` somente após abrir a
   porta, relê alterações de `.env`/disco em tempo real e avisa quando um `HABBLAUD_ROADMAP_TOKEN` antigo do shell

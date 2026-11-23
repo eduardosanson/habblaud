@@ -501,6 +501,16 @@ export function hydrateLive(snapshots: ApiSnapshot[], sessions: ApiSession[]): R
   return roadmaps;
 }
 
+/** O pipeline novo só registra execuções e não expõe mais /agent/sessions: 404 vale "sem sessões". */
+async function listSessionsIfExposed(): Promise<{ sessions: ApiSession[] }> {
+  try {
+    return await listSessions();
+  } catch (error) {
+    if (error instanceof PipelineError && error.status === 404) return { sessions: [] };
+    throw error;
+  }
+}
+
 export async function loadLiveData(): Promise<{ snapshots: ApiSnapshot[]; sessions: ApiSession[] }> {
   const status = await getRoadmapStatus();
   if (!status.available) {
@@ -511,7 +521,7 @@ export async function loadLiveData(): Promise<{ snapshots: ApiSnapshot[]; sessio
       false,
     );
   }
-  const [{ roadmaps }, { sessions }] = await Promise.all([listRoadmaps(), listSessions()]);
+  const [{ roadmaps }, { sessions }] = await Promise.all([listRoadmaps(), listSessionsIfExposed()]);
   const snapshots = await Promise.all(roadmaps.map((roadmap) => getRoadmap(roadmap.id)));
   return { snapshots, sessions };
 }
