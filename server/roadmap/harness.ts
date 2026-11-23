@@ -17,6 +17,8 @@ const PROVIDER_BY_HARNESS: Readonly<Record<string, Provider>> = {
   agy: 'antigravity',
 };
 
+const PROVIDERS: readonly Provider[] = ['claude', 'codex', 'opencode', 'hermes', 'antigravity'];
+
 /** Id de sessão aceito: começa e termina alfanumérico, só letras, dígitos, `.`, `_` e `-` no meio. */
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,126}[A-Za-z0-9]$|^[A-Za-z0-9]$/;
 const WORKDIR_MAX = 1_024;
@@ -31,6 +33,16 @@ export interface ResumeCommand {
   file: string;
   args: string[];
   cwd: string;
+}
+
+/** Id de sessão de verdade (não id de run do pipeline, não vazio, sem metacaracteres de shell). */
+export function isSessionId(value: unknown): value is string {
+  return typeof value === 'string' && SESSION_ID.test(value);
+}
+
+/** `Provider` do Habblaud para um nome já no vocabulário dele (`claude`, `codex`...), ou `null`. */
+export function asProvider(value: unknown): Provider | null {
+  return typeof value === 'string' && (PROVIDERS as readonly string[]).includes(value) ? (value as Provider) : null;
 }
 
 export function providerOfHarness(harness: unknown): Provider | null {
@@ -51,7 +63,7 @@ export function validateResume(resume: unknown): ValidResume | null {
   const r = resume as Record<string, unknown>;
   const provider = providerOfHarness(r.harness);
   if (!provider) return null;
-  if (typeof r.sessionId !== 'string' || !SESSION_ID.test(r.sessionId)) return null;
+  if (!isSessionId(r.sessionId)) return null;
   const workdir = safeWorkdir(r.workdir);
   if (!workdir) return null;
   return { provider, sessionId: r.sessionId, workdir };

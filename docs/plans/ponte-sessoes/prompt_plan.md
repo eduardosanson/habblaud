@@ -1,10 +1,10 @@
 # Prompt Plan: ponte de sessões
 
 ## Ordem de Implementação (TDD, um commit por passo)
-1. [ ] H3 testes → `server/roadmap/harness.ts`: mapa de harness→Provider, validação de `resume`, comando de retomada
+1. [x] H3 testes → `server/roadmap/harness.ts`: mapa de harness→Provider, validação de `resume`, comando de retomada
    por lista fixa (CA01, CA02).
-2. [ ] H1 testes → proxy: allowlist de `participants`/`executions`; cliente `pipeline.ts` + tipos (CA06 parcial).
-3. [ ] H2 testes → `server/roadmap/router.ts`: `resolveTarget` puro, recebe participantes + agentes vivos (CA03–CA05).
+2. [x] H1 testes → proxy: allowlist de `participants`/`executions`; cliente `pipeline.ts` + tipos (CA06 parcial).
+3. [x] H2 testes → `server/roadmap/router.ts`: `resolveTarget` puro, recebe participantes + agentes vivos (CA03–CA05).
 4. [ ] H4 testes → `POST /api/roadmap/converse` local, entrega via `server/messages`.
 5. [ ] H5 resposta pela transcrição da sessão.
 6. [ ] H6 verificar reabertura por harness (spike); implementar só onde confirmado.

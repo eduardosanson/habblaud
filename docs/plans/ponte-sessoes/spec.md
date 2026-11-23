@@ -14,6 +14,12 @@ repositório do pipeline). O Habblaud é o integrador: descobre quem trabalhou n
 - **`execution.sessionId` NÃO é a sessão do harness**: em execuções `source: pipeline-run` ele é um id de run
   (`run:feat-...:D1:2`). A sessão real é `resume.sessionId`. `provider` também não serve de chave (vem como
   `claude-subscription-directsdk-experimental`); a chave é `resume.harness`.
+- **Dados reais (servidor, 22/11):** as execuções já trazem `workerSessionId` (camelCase; id real do harness, vazio
+  quando o pipeline não o capturou — ex.: revisor) e `provider` (`antigravity` no implementador; no revisor vem
+  `claude-subscription-directsdk-experimental`). Sem `resume`, o roteador usa `workerSessionId` + `provider` só se
+  o provider já estiver no vocabulário do Habblaud e o id for válido; nunca há `workdir`, então não há reabertura.
+- Envelopes: `executions` → `{roadmapId, itemId, executions[]}`; `participants` → assumido
+  `{roadmapId, itemId, participants[]}` (a confirmar no openapi do pipeline).
 - Harness do pipeline: `hermes | opencode | agy | claude-code | codex`. Mapa para o `Provider` do Habblaud:
   `claude-code→claude`, `codex→codex`, `opencode→opencode`, `hermes→hermes`, `agy→antigravity`. Desconhecido = ignorar.
 - `resume.argv` é **dado, nunca comando**: o Habblaud não o executa. O comando de retomada é montado aqui, por harness,
