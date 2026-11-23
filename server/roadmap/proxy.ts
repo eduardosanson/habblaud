@@ -19,19 +19,14 @@ const PREFIX = '/api/roadmap';
 const MAX_BODY = 1_000_000;
 const TIMEOUT_MS = 30_000;
 
-/** Rotas do contrato que o Habblaud pode consumir (somente leitura + conversa). */
+/** Rotas do pipeline que o Habblaud consome: só leitura. A conversa não passa pelo pipeline (converse.ts). */
 const ALLOWED: readonly RegExp[] = [
   /^\/api\/roadmaps$/,
   /^\/api\/roadmaps\/[^/]+$/,
   /^\/api\/roadmaps\/[^/]+\/events$/,
   /^\/api\/roadmaps\/[^/]+\/items\/[^/]+\/(?:participants|executions)$/,
   /^\/api\/agent\/sessions$/,
-  /^\/api\/agent\/sessions\/[^/]+\/messages$/,
-  /^\/api\/agent\/sessions\/[^/]+\/events$/,
 ];
-
-/** Única rota que aceita POST: a mensagem para o agente. Todas as outras são somente leitura. */
-const POSTABLE = /^\/api\/agent\/sessions\/[^/]+\/messages$/;
 
 export interface RoadmapStatus {
   enabled: boolean;
@@ -246,9 +241,9 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       void handleConverse(opts.converse, req, res, config, readCaPath());
       return;
     }
-    if (method !== 'GET' && method !== 'POST') {
+    if (method !== 'GET') {
       req.resume();
-      res.setHeader('Allow', 'GET, POST');
+      res.setHeader('Allow', 'GET');
       sendJson(res, 405, errorBody('method_not_allowed', tr('método não permitido')));
       return;
     }
@@ -256,12 +251,6 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
     if (!ALLOWED.some((route) => route.test(targetPath))) {
       req.resume();
       sendJson(res, 404, errorBody('not_found', tr('rota de roadmap desconhecida')));
-      return;
-    }
-    if (method === 'POST' && !POSTABLE.test(targetPath)) {
-      req.resume();
-      res.setHeader('Allow', 'GET');
-      sendJson(res, 405, errorBody('method_not_allowed', tr('método não permitido')));
       return;
     }
     const snapshotMatch = /^\/api\/roadmaps\/([^/]+)(?:\/events|\/items\/[^/]+\/(?:participants|executions))?$/.exec(targetPath);
@@ -292,7 +281,7 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
         });
       return;
     }
-    void forward(req, res, url, targetPath, config.url, config.token, method === 'POST', ca).catch((error: unknown) => {
+    void forward(req, res, url, targetPath, config.url, config.token, ca).catch((error: unknown) => {
       if (res.headersSent) return void res.destroy();
       const message = error instanceof Error && error.message === 'too_large' ? tr('corpo grande demais') : tr('o Hermes Pipeline não respondeu');
       sendJson(res, error instanceof Error && error.message === 'too_large' ? 413 : 502, errorBody('pipeline_unavailable', message, true));
@@ -307,10 +296,8 @@ async function forward(
   targetPath: string,
   baseUrl: string,
   token: string,
-  hasBody: boolean,
   ca?: string[],
 ): Promise<void> {
-  const body = hasBody ? await readBody(req) : undefined;
   const target = new URL(`${targetPath}${url.search}`, baseUrl);
   const isEvent = targetPath.endsWith('/events');
   const headers: Record<string, string> = {
@@ -319,9 +306,7 @@ async function forward(
     'Cache-Control': 'no-store',
     'User-Agent': 'Habblaud roadmap proxy',
   };
-  if (typeof req.headers['content-type'] === 'string') headers['Content-Type'] = req.headers['content-type'];
   if (typeof req.headers['last-event-id'] === 'string') headers['Last-Event-ID'] = req.headers['last-event-id'];
-  if (body) headers['Content-Length'] = String(body.length);
 
   const secure = target.protocol === 'https:';
   await new Promise<void>((resolve, reject) => {
@@ -344,7 +329,7 @@ async function forward(
     upstream.setTimeout(isEvent ? 0 : TIMEOUT_MS, () => upstream.destroy(new Error('timeout')));
     upstream.on('error', reject);
     res.on('close', () => upstream.destroy());
-    upstream.end(body);
+    upstream.end();
   });
 }
 

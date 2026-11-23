@@ -76,28 +76,20 @@ describe('proxy do roadmap', () => {
     expect(seenAuth).toBe('Bearer segredo');
   });
 
-  it('repassa POST com corpo e Content-Type sem aceitar rota fora do contrato', async () => {
-    let body = '';
-    let type = '';
+  it('a conversa do pipeline está fechada: nem mensagem, nem histórico, nem eventos; a lista de sessões segue aberta (CA06)', async () => {
+    const seen: string[] = [];
     const upstream = await listen((req, res) => {
-      type = String(req.headers['content-type'] ?? '');
-      const chunks: Buffer[] = [];
-      req.on('data', (chunk: Buffer) => chunks.push(chunk));
-      req.on('end', () => {
-        body = Buffer.concat(chunks).toString('utf8');
-        res.writeHead(202, { 'Content-Type': 'application/json' });
-        res.end('{"accepted":true}');
-      });
+      seen.push(`${req.method} ${req.url}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{"sessions":[]}');
     });
     const base = await startProxy({ ...CONFIG, url: upstream });
-    const response = await fetch(`${base}/api/roadmap/agent/sessions/sess-nina/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: 'mova o 6.1', messageId: 'x' }),
-    });
-    expect(response.status).toBe(202);
-    expect(type).toContain('application/json');
-    expect(JSON.parse(body)).toEqual({ text: 'mova o 6.1', messageId: 'x' });
+    const post = await fetch(`${base}/api/roadmap/agent/sessions/sess-nina/messages`, { method: 'POST', body: '{}' });
+    expect(post.status).toBe(405);
+    expect((await fetch(`${base}/api/roadmap/agent/sessions/sess-nina/messages`)).status).toBe(404);
+    expect((await fetch(`${base}/api/roadmap/agent/sessions/sess-nina/events`)).status).toBe(404);
+    expect((await fetch(`${base}/api/roadmap/agent/sessions`)).status).toBe(200);
+    expect(seen).toEqual(['GET /api/agent/sessions']);
     expect((await fetch(`${base}/api/roadmap/qualquer`)).status).toBe(404);
     expect((await fetch(`${base}/api/roadmap/roadmaps`, { method: 'PUT' })).status).toBe(405);
   });
