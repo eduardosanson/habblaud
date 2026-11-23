@@ -2914,197 +2914,6 @@ img {
   height: 10px;
 }
 
-.rp-session-wrap {
-  position: relative;
-  margin-top: 8px;
-}
-
-.rp-session-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
-  color: inherit;
-  text-align: left;
-}
-
-.rp-session-btn:hover {
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.rp-session-btn.is-empty {
-  border-style: dashed;
-}
-
-.rp-session-btn__main {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.rp-session-btn__name {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.rp-session-btn__name strong {
-  font-size: 11px;
-}
-
-.rp-session-btn__meta {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rp-session-btn__empty-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--faint);
-}
-
-.rp-session-btn__empty-icon .rp-icon {
-  width: 15px;
-  height: 15px;
-}
-
-.rp-session-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.rp-session-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  left: 0;
-  z-index: 3;
-  max-height: 340px;
-  padding: 6px;
-  overflow: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: #171e2b;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
-}
-
-.rp-session-menu__head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 4px;
-  padding: 6px 7px 8px;
-  border-bottom: 1px solid var(--line);
-}
-
-.rp-session-menu__head strong {
-  font-size: 10.5px;
-}
-
-.rp-session-menu__head span {
-  color: var(--faint);
-  font-size: 8.5px;
-}
-
-.rp-session-option {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  padding: 6px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
-.rp-session-option:hover {
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.rp-session-option.is-active {
-  border-color: rgba(124, 200, 255, 0.22);
-  background: var(--accent-soft);
-}
-
-.rp-session-option__main {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.rp-session-option__name {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.rp-session-option__name strong {
-  font-size: 10px;
-}
-
-.rp-session-option__title {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rp-session-option__meta {
-  overflow: hidden;
-  color: var(--faint);
-  font-size: 8px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rp-session-option__check {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
-}
-
-.rp-session-option__none-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--faint);
-}
-
-.rp-session-option__none-icon .rp-icon {
-  width: 15px;
-  height: 15px;
-}
-
-.rp-session-option--none {
-  margin-top: 3px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-  border-radius: 0 0 7px 7px;
-}
-
 .rp-chat__history {
   display: flex;
   flex: 1;
@@ -3191,52 +3000,6 @@ img {
   height: 20px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.05);
-}
-
-.rp-planref {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-  padding: 8px;
-  border: 1px solid rgba(124, 200, 255, 0.25);
-  border-radius: 7px;
-  background: rgba(124, 200, 255, 0.06);
-  color: inherit;
-  text-align: left;
-}
-
-.rp-planref:hover {
-  background: rgba(124, 200, 255, 0.1);
-}
-
-.rp-planref.is-blocked {
-  border-color: rgba(255, 138, 117, 0.28);
-  background: rgba(255, 138, 117, 0.055);
-}
-
-.rp-planref__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.rp-planref__title {
-  font-size: 10px;
-}
-
-.rp-planref__action {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--accent);
-  font-size: 8.5px;
-}
-
-.rp-planref__action .rp-icon {
-  width: 9px;
-  height: 9px;
 }
 
 .rp-typing {
@@ -4483,9 +4246,7 @@ img {
 .rp-step__note,
 .rp-dep__detail,
 .rp-activity-row__meta,
-.rp-session-btn__meta,
 .rp-chat__history-note,
-.rp-planref__action,
 .rp-question {
   font-size: 9.5px;
 }
@@ -4494,28 +4255,13 @@ img {
   font-size: 9.5px;
 }
 
-.rp-msg__meta strong,
-.rp-planref__title,
-.rp-session-menu__head strong {
+.rp-msg__meta strong {
   font-size: 11px;
 }
 
 .rp-decision__text,
 .rp-dep__line strong {
   font-size: 10.5px;
-}
-
-.rp-session-menu__head span,
-.rp-session-option__title {
-  font-size: 9.5px;
-}
-
-.rp-session-option__name strong {
-  font-size: 10.5px;
-}
-
-.rp-session-option__meta {
-  font-size: 8.5px;
 }
 
 .rp-toast {
@@ -5047,10 +4793,6 @@ img {
   .rp-composer {
     padding: 6px 10px 10px;
   }
-
-  .rp-session-menu {
-    max-height: 300px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5188,65 +4930,6 @@ img {
   border-color: rgba(255, 181, 71, 0.3);
   background: var(--amber-soft);
   color: var(--amber);
-}
-
-.rp-receipts {
-  display: grid;
-  gap: 5px;
-  width: 100%;
-  margin-top: 6px;
-}
-
-.rp-receipt {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.rp-receipt .rp-icon {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  margin-top: 1px;
-  color: var(--faint);
-}
-
-.rp-receipt.is-applied {
-  border-color: rgba(79, 209, 139, 0.25);
-  background: var(--green-soft);
-}
-
-.rp-receipt.is-applied .rp-icon {
-  color: var(--green);
-}
-
-.rp-receipt.is-rejected {
-  border-color: rgba(255, 138, 117, 0.28);
-  background: var(--coral-soft);
-}
-
-.rp-receipt.is-rejected .rp-icon {
-  color: var(--coral);
-}
-
-.rp-receipt__text {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  font-size: 10px;
-}
-
-.rp-receipt__text strong {
-  font-weight: 600;
-}
-
-.rp-receipt__meta {
-  color: var(--muted);
-  font-size: 9px;
 }
 
 .rp-toast.is-ok {
