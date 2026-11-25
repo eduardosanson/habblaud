@@ -43,6 +43,8 @@ function exec(over: Record<string, unknown> = {}): Record<string, unknown> {
 interface Fake {
   item?: unknown[];
   roadmap?: unknown[];
+  /** Resposta de GET /api/roadmaps/r; sem ela, 404. */
+  snapshot?: unknown;
   /** Responde este status (com envelope de erro) em qualquer rota de execuções. */
   failWith?: number;
   seen?: string[];
@@ -58,7 +60,10 @@ async function fakePipeline(fake: Fake = {}): Promise<string> {
       return;
     }
     const json = { 'Content-Type': 'application/json; charset=utf-8' };
-    if (req.url === '/api/roadmaps/r/items/i/executions') {
+    if (req.url === '/api/roadmaps/r' && fake.snapshot) {
+      res.writeHead(200, json);
+      res.end(JSON.stringify(fake.snapshot));
+    } else if (req.url === '/api/roadmaps/r/items/i/executions') {
       res.writeHead(200, json);
       res.end(JSON.stringify({ roadmapId: 'r', itemId: 'i', executions: fake.item ?? [] }));
     } else if (req.url === '/api/roadmaps/r/executions?limit=200') {
@@ -82,6 +87,8 @@ interface StartOpts {
   sendResult?: SendResult;
   withConverse?: boolean;
   local?: boolean;
+  /** Liga a reabertura; `problem` é a trava do terminal (motivo da recusa). */
+  reopen?: { problem: string | null; resumed: string[] };
   /** `provider` ausente quer dizer Claude Code, como no escritório de verdade. */
   agents?: Array<{ id: string; provider?: 'codex' | 'claude'; sessionId: string }>;
 }
@@ -105,6 +112,23 @@ async function start(pipelineUrl: string, opts: StartOpts = {}): Promise<Harness
     config,
     isLocal: () => opts.local !== false,
     ...(opts.withConverse === false ? {} : { converse }),
+    ...(opts.reopen
+      ? {
+          reopen: {
+            problem: () => opts.reopen!.problem,
+            deps: {
+              ...converse,
+              accounts: () => [],
+              isAlive: () => false,
+              resume: (p: { sessionId: string }) => {
+                opts.reopen!.resumed.push(p.sessionId);
+                return { agentId: 'acc:1' };
+              },
+              opened: () => 'acc:1',
+            },
+          },
+        }
+      : {}),
   });
   const base = await listen((req, res) => handler(req, res, new URL(req.url ?? '/', 'http://localhost')));
   return { base, sent };
@@ -134,7 +158,20 @@ describe('POST /api/roadmap/converse', () => {
     const delivered = sent[0] as { agentId: string; text: string };
     expect(delivered.agentId).toBe('codex:1');
     expect(delivered.text).toContain('como ficou o teste?');
-    expect(seen).toEqual(['GET /api/roadmaps/r/items/i/executions Bearer segredo']);
+    expect(seen).toEqual(['GET /api/roadmaps/r/items/i/executions Bearer segredo', 'GET /api/roadmaps/r Bearer segredo']);
+  });
+
+  it('a pergunta chega com o número e o título do item, que a sessão pode nunca ter visto', async () => {
+    const snapshot = { roadmap: { id: 'r', phases: [{ id: 'f', items: [{ id: 'outro', key: '1.1', title: 'Outro' }, { id: 'i', key: '5.1', title: 'Revisar a busca' }] }] } };
+    const { base, sent } = await start(await fakePipeline({ item: [exec()], snapshot }));
+    await post(base, { roadmapId: 'r', itemId: 'i', text: 'o que mudou no 5.1?' });
+    expect((sent[0] as { text: string }).text).toContain('5.1 «Revisar a busca»');
+  });
+
+  it('sem conseguir ler o item, entrega com o id mesmo', async () => {
+    const { base, sent } = await start(await fakePipeline({ item: [exec()] }));
+    expect((await post(base, { roadmapId: 'r', itemId: 'i', text: 'oi' })).status).toBe(202);
+    expect((sent[0] as { text: string }).text).toContain('item i');
   });
 
   it('item sem execuções: usa quem trabalhou no roadmap', async () => {
@@ -312,5 +349,36 @@ describe('agente do Claude Code no escritório (provider ausente quer dizer clau
     const response = await post(base, { roadmapId: 'r', itemId: 'i', text: 'oi', session: { provider: 'claude', sessionId: SID_B } });
     expect(response.status).toBe(202);
     expect((sent[0] as { agentId: string }).agentId).toBe('.claude:123');
+  });
+});
+
+describe('POST /api/roadmap/reopen', () => {
+  const body = { roadmapId: 'r', itemId: 'i', session: { provider: 'claude', sessionId: SID } };
+  const reopenPost = (base: string, method = 'POST') =>
+    fetch(`${base}/api/roadmap/reopen`, { method, headers: { 'Content-Type': 'application/json' }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+  const pipeline = () => fakePipeline({ item: [exec({ provider: 'claude-code' })] });
+
+  it('chega à reabertura com a sessão listada', async () => {
+    const reopen = { problem: null, resumed: [] as string[] };
+    const { base } = await start(await pipeline(), { agents: [], reopen });
+    const response = await reopenPost(base);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ reopened: false, agentId: 'acc:1' });
+  });
+
+  it('aplica a trava do terminal antes de qualquer coisa', async () => {
+    const reopen = { problem: 'origem não permitida', resumed: [] as string[] };
+    const { base } = await start(await pipeline(), { agents: [], reopen });
+    const response = await reopenPost(base);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'local_only', message: 'origem não permitida' } });
+    expect(reopen.resumed).toEqual([]);
+  });
+
+  it('só aceita POST, e sem configuração a rota não existe', async () => {
+    const withIt = await start(await pipeline(), { reopen: { problem: null, resumed: [] } });
+    expect((await reopenPost(withIt.base, 'GET')).status).toBe(405);
+    const without = await start(await pipeline());
+    expect((await reopenPost(without.base)).status).toBe(404);
   });
 });

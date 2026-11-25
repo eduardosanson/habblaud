@@ -363,6 +363,11 @@ export function postConverse(body: { roadmapId: string; itemId: string; text: st
   return request('/converse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 }
 
+/** Reabre a própria sessão finalizada num terminal do Habblaud (`reopened: false` = já estava aberta). */
+export function postReopen(body: { roadmapId: string; itemId: string; session: { provider: Provider; sessionId: string } }): Promise<{ reopened: boolean; agentId?: string }> {
+  return request('/reopen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
 export interface Subscription {
   close(): void;
 }

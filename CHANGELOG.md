@@ -10,6 +10,18 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Corrigido (roadmap)
+
+- **A pergunta chega com o nome do item.** A sessão recebia só o id interno e não sabia a que "5.1" a pergunta se
+  referia; agora o número e o título do item vão junto.
+
+### Adicionado (roadmap)
+
+- **Reabrir a sessão que fez o trabalho.** Na gaveta do roadmap, uma sessão fechada do Claude Code ganhou o botão
+  **Reabrir sessão**: o Habblaud a retoma num terminal dele (`claude --resume`) e a pergunta vai para quem trabalhou no
+  item. Precisa de `HABBLAUD_PTY=1`; a pasta vem da conversa gravada no computador, e sessão ainda aberta nunca é
+  duplicada.
+
 ### Alterado
 
 - **A conversa do roadmap fala com o agente real que trabalhou no plano.** Antes a pergunta ia para um agente dentro do

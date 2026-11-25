@@ -30,6 +30,12 @@ export function describeOption(option: ApiSessionOption): string {
   return [providerLabel(option.provider), option.profile, scope, state].filter(Boolean).join(' · ');
 }
 
+/** A sessão escolhida que dá para reabrir: fechada e do Claude Code (o único com reabertura no servidor). */
+export function reopenTarget(opts: ApiSessionOptions, choice: SessionChoice | null): SessionChoice | null {
+  const picked = choice ? opts.options.find((option) => sameSession(option, choice)) : undefined;
+  return picked && !picked.live && picked.provider === 'claude' ? { provider: picked.provider, sessionId: picked.sessionId } : null;
+}
+
 /** Dá para enviar? Só para uma sessão viva que está na lista; do contrário, o motivo para mostrar à pessoa. */
 export function canSend(opts: ApiSessionOptions, choice: SessionChoice | null): SendVerdict {
   if (opts.options.length === 0) return { ok: false, reason: tr('Ninguém registrou sessão neste item.') };

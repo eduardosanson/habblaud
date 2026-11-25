@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { providerLabel } from './bridge';
 import type { ApiSessionOption, ApiSessionOptions } from './pipeline';
-import { canSend, describeOption, initialChoice, sameSession } from './session-picker';
+import { canSend, describeOption, initialChoice, reopenTarget, sameSession } from './session-picker';
 
 function option(over: Partial<ApiSessionOption> = {}): ApiSessionOption {
   return { provider: 'claude', sessionId: 's-1', live: true, resumable: false, lastAt: '2026-11-24T10:00:00Z', scope: 'item', ...over };
@@ -75,5 +75,23 @@ describe('describeOption e sameSession', () => {
     expect(sameSession({ provider: 'claude', sessionId: 'a' }, { provider: 'claude', sessionId: 'a' })).toBe(true);
     expect(sameSession({ provider: 'claude', sessionId: 'a' }, { provider: 'codex', sessionId: 'a' })).toBe(false);
     expect(sameSession({ provider: 'claude', sessionId: 'a' }, { provider: 'claude', sessionId: 'b' })).toBe(false);
+  });
+});
+
+describe('reopenTarget', () => {
+  const closed = option({ sessionId: 's-1', live: false });
+
+  it('oferece reabrir a sessão fechada do Claude Code escolhida', () => {
+    expect(reopenTarget(options([closed]), { provider: 'claude', sessionId: 's-1' })).toEqual({ provider: 'claude', sessionId: 's-1' });
+  });
+
+  it('não oferece para sessão viva, de outro harness, fora da lista ou sem escolha', () => {
+    const live = option({ sessionId: 's-2' });
+    const codex = option({ provider: 'codex', sessionId: 's-3', live: false });
+    const list = options([closed, live, codex]);
+    expect(reopenTarget(list, { provider: 'claude', sessionId: 's-2' })).toBeNull();
+    expect(reopenTarget(list, { provider: 'codex', sessionId: 's-3' })).toBeNull();
+    expect(reopenTarget(list, { provider: 'claude', sessionId: 'x' })).toBeNull();
+    expect(reopenTarget(list, null)).toBeNull();
   });
 });

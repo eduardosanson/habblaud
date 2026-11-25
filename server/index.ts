@@ -25,7 +25,8 @@ import { errMsg, log } from './log';
 import { NameStore } from './model/names';
 import { Office } from './model/office';
 import { RoomAliases } from './model/room-aliases';
-import { createPtyRoutes } from './http/pty';
+import { createPtyRoutes, ptyRequestProblem } from './http/pty';
+import { pidAlive } from './sources/registry';
 import { claudeBinFrom, isExecutableFile, loadPty, PtyManager, type ScreenFactory, type SpawnPty } from './pty/manager';
 import { loadHeadlessScreen } from './pty/screen';
 import { openMainAgent, SessionHistory } from './sources/history';
@@ -407,6 +408,22 @@ const roadmap = createRoadmapHandler({
   extraCaPath: () => resolveRoadmapEnv().NODE_EXTRA_CA_CERTS?.trim(),
   // A conversa do roadmap vai para a sessão real do agente, pela fila de mensagens do escritório; sem ela, a rota não existe.
   converse: messages ? { office: { list: () => office.list() }, messages } : undefined,
+  // Reabrir a sessão finalizada usa o terminal interativo e a mesma trava dele.
+  reopen: messages
+    ? {
+        problem: ptyRequestProblem,
+        deps: {
+          office: { list: () => office.list() },
+          messages,
+          accounts: () => accounts.entries().map((a) => ({ id: a.id, dir: a.dir })),
+          resume: ptys ? (p) => ptys.resume(p) : undefined,
+          opened: (sessionId) => ptys?.openedFor(sessionId),
+          blockedOnTrust: ptys ? (sessionId) => ptys.blockedOnTrust(sessionId) : undefined,
+          disabledReason: () => ptyOff,
+          isAlive: pidAlive,
+        },
+      }
+    : undefined,
 });
 
 const api = createApiHandler({

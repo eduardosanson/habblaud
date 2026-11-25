@@ -16,7 +16,7 @@ import {
 import { suggestedQuestions } from './conversation-data';
 import type { AppActions, AppState, ChatMessage } from './state';
 import { providerLabel } from './bridge';
-import { canSend, describeOption, initialChoice, sameSession } from './session-picker';
+import { canSend, describeOption, initialChoice, reopenTarget, sameSession } from './session-picker';
 import { emptyState, h, icon } from './ui';
 import { renderMarkdown } from '../ui/markdown';
 import type { Provider } from '../../../shared/types';
@@ -121,6 +121,15 @@ function sessionPickerEl(state: AppState, actions: AppActions): HTMLElement {
       ),
     );
     box.append(select);
+  }
+  if (reopenTarget(options, choice)) {
+    box.append(
+      h(
+        'button',
+        { class: 'rp-btn', attrs: { type: 'button', disabled: picker.reopening }, on: { click: () => actions.reopenSession() } },
+        h('span', { text: picker.reopening ? tr('Reabrindo a sessão…') : tr('Reabrir sessão') }),
+      ),
+    );
   }
   const blocked = sendBlockedReason(state);
   if (blocked) box.append(h('span', { class: 'rp-session__note', attrs: { role: 'status' }, text: blocked }));
