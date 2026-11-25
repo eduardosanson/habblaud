@@ -11,7 +11,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tr } from '../../shared/i18n';
 import { sendJson } from '../http/app';
 import type { RoadmapConfig } from './config';
-import { converse, sessionOptions, type ConverseDeps, type PipelineGet } from './converse';
+import { converse, sessionOptions, type ConverseDeps, type ConverseOutcome, type PipelineGet } from './converse';
+import { reopen, type ReopenDeps } from './reopen';
 
 export type { ConverseDeps };
 
@@ -47,6 +48,8 @@ export interface RoadmapProxyOptions {
   extraCaPath?: string | (() => string | undefined);
   /** Conversa pelas sessões reais do escritório (POST /api/roadmap/converse). Sem isso, a rota não existe. */
   converse?: ConverseDeps;
+  /** Reabrir sessão finalizada (POST /api/roadmap/reopen). `problem` é a trava do terminal: motivo da recusa ou null. */
+  reopen?: { deps: ReopenDeps; problem(req: IncomingMessage): string | null };
 }
 
 function errorBody(code: string, message: string, retryable = false): Record<string, unknown> {
@@ -238,7 +241,24 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
         sendJson(res, opts.converse ? 405 : 404, errorBody(opts.converse ? 'method_not_allowed' : 'not_found', opts.converse ? tr('método não permitido') : tr('rota de roadmap desconhecida')));
         return;
       }
-      void handleConverse(opts.converse, req, res, config, readCaPath());
+      const deps = opts.converse;
+      const get = pipelineGetter(config, readCaPath());
+      void handlePost(req, res, (raw) => converse(deps, get, (id) => allowedId(config, id), raw));
+      return;
+    }
+    if (url.pathname === `${PREFIX}/reopen`) {
+      const target = opts.reopen;
+      const problem = target && method === 'POST' ? target.problem(req) : null;
+      if (!target || method !== 'POST') {
+        req.resume();
+        sendJson(res, target ? 405 : 404, errorBody(target ? 'method_not_allowed' : 'not_found', target ? tr('método não permitido') : tr('rota de roadmap desconhecida')));
+      } else if (problem) {
+        req.resume();
+        sendJson(res, 403, errorBody('local_only', problem));
+      } else {
+        const get = pipelineGetter(config, readCaPath());
+        void handlePost(req, res, (raw) => reopen(target.deps, get, (id) => allowedId(config, id), raw));
+      }
       return;
     }
     if (url.pathname === `${PREFIX}/sessions`) {
@@ -336,13 +356,8 @@ async function forward(
   });
 }
 
-async function handleConverse(
-  deps: ConverseDeps,
-  req: IncomingMessage,
-  res: ServerResponse,
-  config: RoadmapConfig,
-  caPath: string | undefined,
-): Promise<void> {
+/** Lê o corpo JSON de um POST do roadmap e responde com o resultado de `run`. */
+async function handlePost(req: IncomingMessage, res: ServerResponse, run: (raw: unknown) => Promise<ConverseOutcome>): Promise<void> {
   let raw: unknown;
   try {
     const body = await readBody(req);
@@ -352,7 +367,7 @@ async function handleConverse(
     sendJson(res, tooLarge ? 413 : 400, errorBody(tooLarge ? 'too_large' : 'bad_request', tooLarge ? tr('corpo grande demais') : tr('JSON inválido')));
     return;
   }
-  const outcome = await converse(deps, pipelineGetter(config, caPath), (id) => allowedId(config, id), raw);
+  const outcome = await run(raw);
   sendJson(res, outcome.status, outcome.body);
 }
 

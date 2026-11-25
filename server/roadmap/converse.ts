@@ -95,7 +95,7 @@ function liveAgentsOf(deps: ConverseDeps): LiveAgent[] {
  * Sessões que trabalharam no item (as do roadmap, se o item não tem nenhuma), vivas primeiro. Um 404 do pipeline
  * (item ou roadmap desconhecido) vale lista vazia; qualquer outra recusa dele é erro.
  */
-async function targetsFor(deps: ConverseDeps, get: PipelineGet, roadmapId: string, itemId: string): Promise<{ targets: RouteResult[] } | { failure: ConverseOutcome }> {
+export async function targetsFor(deps: ConverseDeps, get: PipelineGet, roadmapId: string, itemId: string): Promise<{ targets: RouteResult[] } | { failure: ConverseOutcome }> {
   const liveAgents = liveAgentsOf(deps);
   const roadmap = `/api/roadmaps/${encodeURIComponent(roadmapId)}`;
   try {

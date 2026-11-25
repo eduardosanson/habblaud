@@ -95,6 +95,7 @@ export interface PtyManagerOptions {
 
 /** Saída bruta guardada por terminal quando não há o @xterm/headless (ver rawScreen). */
 const MAX_SCROLLBACK = 512 * 1024;
+const HEAD_OUTPUT = 32 * 1024;
 /** Terminais encerrados continuam na lista por um tempo, para a tela final ainda poder ser vista. */
 const EXITED_KEEP_MS = 10 * 60_000;
 export const MAX_PTYS = 12;
@@ -102,6 +103,13 @@ export const MAX_PTYS = 12;
 const TAKEOVER_WAIT_MS = 5_000;
 /** Depois de encerrar à força: quanto mais esperar. */
 const FORCE_WAIT_MS = 3_000;
+/** Quanto esperar uma sessão reaberta registrar-se ou mostrar o aviso de pasta não confiável. */
+const TRUST_CHECKS = 20;
+const TRUST_CHECK_MS = 500;
+/** O aviso desenha as palavras com movimentos de cursor: compara sem as sequências de escape nem espaços. */
+const TRUST_DIALOG = /Yes,Itrustthisfolder/i;
+// eslint-disable-next-line no-control-regex
+const ANSI = /\u001b(?:\[[0-9;?>]*[ -/]*[@-~]|\][^\u0007]*\u0007|.)/g;
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Id de agente principal: "<conta>:<pid>". */
 const MAIN_ID = /^(.+):(\d+)$/;
@@ -155,6 +163,8 @@ interface Pty {
   clients: Set<ServerResponse>;
   /** Conectando: guardam a saída nova numa fila até a tela guardada ficar pronta. */
   pending: Map<ServerResponse, string[]>;
+  /** Começo da saída (até HEAD_OUTPUT), para reconhecer avisos de abertura. */
+  head: string;
 }
 
 /** Sessão aberta noutro terminal, conferida: o PID e o que o sistema diz dele. */
@@ -224,6 +234,39 @@ export class PtyManager {
   /** Abre uma sessão nova do Claude Code na pasta (`cwd` absoluto), na conta pedida (ou na padrão). */
   create(p: { cwd: unknown; account?: unknown; cols?: unknown; rows?: unknown }): PtyInfo {
     return this.spawn(this.plan(p, this.takeovers.size));
+  }
+
+  /** Reabre aqui uma sessão do Claude Code já finalizada; repetir enquanto ela roda devolve o mesmo terminal. */
+  resume(p: { sessionId: string; cwd: string; account: string }): PtyInfo {
+    if (!SESSION_ID.test(p.sessionId)) throw new PtyError(409, tr('sessão sem id válido para retomar'));
+    const own = this.resumedPty(p.sessionId);
+    if (own) return { ...own.info };
+    return this.spawn(this.plan({ cwd: p.cwd, account: p.account }, this.takeovers.size), { resume: p.sessionId });
+  }
+
+  /** Agente do terminal que retomou esta sessão aqui e ainda roda. */
+  openedFor(sessionId: string): string | undefined {
+    return this.resumedPty(sessionId)?.info.agentId;
+  }
+
+  /**
+   * A sessão reaberta parou no aviso "você confia nesta pasta?"? Se parou, encerra o terminal (a confiança é da
+   * pessoa, e ele não apareceria no escritório) e devolve true. Devolve false assim que a sessão se registra.
+   */
+  async blockedOnTrust(sessionId: string): Promise<boolean> {
+    for (let i = 0; i < TRUST_CHECKS; i++) {
+      const pty = this.resumedPty(sessionId);
+      if (!pty) return false;
+      if (TRUST_DIALOG.test(pty.head.replace(ANSI, '').replace(/\s+/g, ''))) {
+        this.kill(pty);
+        this.drop(pty.info.id);
+        this.opts.onChange();
+        return true;
+      }
+      if (this.registered(pty)) return false;
+      await this.sleep(TRUST_CHECK_MS);
+    }
+    return false;
   }
 
   /**
@@ -412,10 +455,11 @@ export class PtyManager {
     const info: PtyInfo = { id, pid: proc.pid, cwd, account: account.id, agentId: `${account.id}:${proc.pid}`, startedAt: this.now() };
     if (p.resume) info.resumed = p.resume;
     if (p.from) info.fromAgent = p.from;
-    const pty: Pty = { info, proc, screen: this.createScreen(cols, rows), clients: new Set(), pending: new Map() };
+    const pty: Pty = { info, proc, screen: this.createScreen(cols, rows), clients: new Set(), pending: new Map(), head: '' };
     this.ptys.set(id, pty);
     proc.onData((data) => {
       pty.screen.write(data);
+      if (pty.head.length < HEAD_OUTPUT) pty.head += data;
       for (const queue of pty.pending.values()) queue.push(data);
       this.broadcast(pty, 'data', data);
     });
@@ -428,6 +472,21 @@ export class PtyManager {
     log.info(p.resume ? tr('Terminal {0} aberto em {1} (conta {2}, retomando {3}).', [id, cwd, account.id, p.resume]) : tr('Terminal {0} aberto em {1} (conta {2}).', [id, cwd, account.id]));
     this.opts.onChange();
     return { ...info };
+  }
+
+  private registered(pty: Pty): boolean {
+    const account = this.opts.accounts().find((a) => a.id === pty.info.account);
+    if (!account) return false;
+    try {
+      return !!this.readSession(account.dir, pty.info.pid);
+    } catch {
+      return false;
+    }
+  }
+
+  private resumedPty(sessionId: string): Pty | undefined {
+    for (const t of this.ptys.values()) if (t.info.resumed === sessionId && t.info.exitedAt === undefined) return t;
+    return undefined;
   }
 
   private byAgent(agentId: string): Pty | undefined {

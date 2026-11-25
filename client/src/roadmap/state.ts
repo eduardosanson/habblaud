@@ -41,6 +41,8 @@ export interface SessionPickerState {
   choice: SessionChoice | null;
   /** Item para o qual a lista foi carregada; respostas atrasadas de outro item são descartadas. */
   forItemId: string | null;
+  /** Reabertura pedida e a sessão ainda não apareceu viva. */
+  reopening: boolean;
 }
 
 export interface ConversationUiState {
@@ -117,6 +119,7 @@ export interface AppActions {
   /** Recarrega a lista de sessões do plano em foco (também é o "tentar de novo" do seletor). */
   loadSessions(): void;
   chooseSession(choice: SessionChoice): void;
+  reopenSession(): void;
   showToast(text: string, tone?: ToastState['tone']): void;
   jumpToCurrent(): void;
 }

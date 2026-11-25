@@ -57,9 +57,10 @@ A entrega vai pela fila de mensagens do escritório (`server/messages`), como se
 `202` entregue; `409 session_closed` sessão fechada ou sem o plugin de mensagens conectado; `404 no_session` ninguém
 registrou sessão; `409 unavailable` a sessão não aceita mensagem agora; erro do pipeline (por exemplo `401`) é repassado.
 
-O Habblaud nunca executa comando vindo do pipeline. A gaveta mostra sessão fechada na lista, mas não envia para ela e
-explica o motivo: reabrir sessão fechada fica para depois (só Claude Code e Codex têm retomada verificada em
-`server/roadmap/harness.ts`).
+O Habblaud nunca executa comando vindo do pipeline. Uma sessão fechada do Claude Code pode ser reaberta pelo botão
+**Reabrir sessão** (`POST /api/roadmap/reopen`, `server/roadmap/reopen.ts`): o terminal interativo (`HABBLAUD_PTY=1`)
+roda `claude --resume <id>` na pasta gravada no transcript local, com a mesma trava do terminal. Os outros harnesses
+continuam sem reabertura.
 
 ## Fronteira
 

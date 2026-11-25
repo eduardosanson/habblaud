@@ -135,6 +135,74 @@ describe('PtyManager: conferir o processo antes de encerrar', () => {
   });
 });
 
+describe('PtyManager: reabrir sessão finalizada', () => {
+  it('abre o Claude Code com --resume na pasta e na conta pedidas', () => {
+    const { manager, spawned } = setup();
+    const info = manager.resume({ sessionId: SESSION, cwd: tmpdir(), account: 'acc' });
+    expect(spawned).toEqual([{ args: ['--resume', SESSION], cwd: tmpdir() }]);
+    expect(info).toMatchObject({ resumed: SESSION, agentId: 'acc:9001' });
+    expect(manager.openedFor(SESSION)).toBe('acc:9001');
+  });
+
+  it('não abre a mesma sessão duas vezes enquanto o terminal roda', () => {
+    const { manager, spawned } = setup();
+    const first = manager.resume({ sessionId: SESSION, cwd: tmpdir(), account: 'acc' });
+    expect(manager.resume({ sessionId: SESSION, cwd: tmpdir(), account: 'acc' }).id).toBe(first.id);
+    expect(spawned).toHaveLength(1);
+  });
+
+  it('recusa id que não é de sessão (não vira argumento do comando)', () => {
+    const { manager, spawned } = setup();
+    expect(() => manager.resume({ sessionId: '--dangerously-skip-permissions', cwd: tmpdir(), account: 'acc' })).toThrow(PtyError);
+    expect(spawned).toEqual([]);
+    expect(manager.openedFor(SESSION)).toBeUndefined();
+  });
+});
+
+describe('PtyManager: pasta ainda não confiável', () => {
+  /** O aviso como o Claude Code o desenha: palavras separadas por movimentos de cursor, não por espaços. */
+  const DIALOG = 'Quick\u001b[1Csafety\u001b[1Ccheck\r\n\u001b[32m❯\u001b[0mNo,\u001b[1Cexit\r\nYes,\u001b[1CI\u001b[1Ctrust\u001b[1Cthis\u001b[1Cfolder';
+
+  function opened(over: Parameters<typeof setup>[0] = {}) {
+    let proc: FakeProc | undefined;
+    let killed = false;
+    const { manager } = setup({
+      spawn: () => {
+        proc = new FakeProc(77);
+        proc.kill = () => void (killed = true);
+        return proc;
+      },
+      readSession: () => {
+        throw new Error('ainda não registrou');
+      },
+      ...over,
+    });
+    manager.resume({ sessionId: SESSION, cwd: tmpdir(), account: 'acc' });
+    return { manager, proc: proc!, killed: () => killed };
+  }
+
+  it('reconhece o aviso, encerra o terminal e libera uma nova tentativa', async () => {
+    const t = opened();
+    t.proc.data(DIALOG);
+    expect(await t.manager.blockedOnTrust(SESSION)).toBe(true);
+    expect(t.killed()).toBe(true);
+    expect(t.manager.openedFor(SESSION)).toBeUndefined();
+  });
+
+  it('sessão que registrou não está presa', async () => {
+    const t = opened({ readSession: () => ({ sessionId: SESSION }) });
+    expect(await t.manager.blockedOnTrust(SESSION)).toBe(false);
+    expect(t.killed()).toBe(false);
+  });
+
+  it('sem aviso nem registro, desiste de esperar sem encerrar', async () => {
+    const t = opened();
+    t.proc.data('carregando a conversa');
+    expect(await t.manager.blockedOnTrust(SESSION)).toBe(false);
+    expect(t.killed()).toBe(false);
+  });
+});
+
 describe('PtyManager: assumir', () => {
   it('encerra lá e retoma a mesma conversa aqui', async () => {
     const s = setup();

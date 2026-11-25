@@ -19,11 +19,11 @@ import { formatDateTime, hydrateLive, loadLiveData, sourceFor } from './live';
 import {
   listSessionOptions,
   PipelineError,
-  postConverse,
+  postConverse, postReopen,
   subscribeRoadmap,
   type Subscription,
 } from './pipeline';
-import { canSend, initialChoice, sameSession, type SessionChoice } from './session-picker';
+import { canSend, initialChoice, reopenTarget, sameSession, type SessionChoice } from './session-picker';
 import type { AppActions, AppState, ChatMessage, SessionPickerState, StreamStatus, ToastState } from './state';
 import type { TerminalEntry } from '../../../shared/types';
 import { h, icon } from './ui';
@@ -75,8 +75,12 @@ function createInitialState(): AppState {
   };
 }
 
+/** Reabertura: intervalo entre as releituras e quantas antes de desistir (~40 s). */
+const REOPEN_POLL_MS = 2_000;
+const REOPEN_TRIES = 20;
+
 function emptySessions(): SessionPickerState {
-  return { status: 'idle', options: null, error: null, choice: null, forItemId: null };
+  return { status: 'idle', options: null, error: null, choice: null, forItemId: null, reopening: false };
 }
 
 function describeError(error: unknown): string {
@@ -462,6 +466,7 @@ export function start(): void {
     if (picker.forItemId !== plan.apiId) picker.choice = null;
     picker.status = 'loading';
     picker.error = null;
+    picker.reopening = false;
     picker.forItemId = plan.apiId;
     void listSessionOptions(context.roadmapId, plan.apiId)
       .then((options) => {
@@ -478,6 +483,31 @@ export function start(): void {
         picker.error = describeError(error);
         render();
       });
+  };
+
+  /** Depois de reabrir, relê a lista até a sessão aparecer viva (o plugin de mensagens leva alguns segundos). */
+  const awaitReopened = (roadmapId: string, itemId: string, choice: SessionChoice, token: number, tries: number): void => {
+    const picker = state.conversation.sessions;
+    const finish = (text: string, tone: ToastState['tone']): void => {
+      picker.reopening = false;
+      actions.showToast(text, tone);
+    };
+    window.setTimeout(() => {
+      if (token !== sessionsToken) return;
+      void listSessionOptions(roadmapId, itemId)
+        .catch(() => null)
+        .then((options) => {
+          if (token !== sessionsToken) return;
+          if (options) picker.options = options;
+          if (options?.options.some((option) => option.live && sameSession(option, choice))) {
+            finish(tr('Sessão reaberta. Já pode perguntar.'), 'ok');
+          } else if (tries > 1) {
+            awaitReopened(roadmapId, itemId, choice, token, tries - 1);
+          } else {
+            finish(tr('A sessão abriu, mas ainda não recebe mensagens. Veja o terminal dela no escritório.'), 'error');
+          }
+        });
+    }, REOPEN_POLL_MS);
   };
 
   const actions: AppActions = {
@@ -668,6 +698,27 @@ export function start(): void {
     chooseSession(choice) {
       state.conversation.sessions.choice = choice;
       render();
+    },
+
+    reopenSession() {
+      const context = state.conversation.context;
+      const plan = context.kind === 'plan' && context.id ? planById(context.roadmapId, context.id) : undefined;
+      const picker = state.conversation.sessions;
+      if (!plan || !picker.options || picker.reopening) return;
+      const choice = reopenTarget(picker.options, picker.choice ?? initialChoice(picker.options));
+      if (!choice) return;
+      picker.choice = choice;
+      picker.reopening = true;
+      const token = ++sessionsToken;
+      render();
+      void postReopen({ roadmapId: context.roadmapId, itemId: plan.apiId, session: choice })
+        .then(() => awaitReopened(context.roadmapId, plan.apiId, choice, token, REOPEN_TRIES))
+        .catch((error: unknown) => {
+          if (token !== sessionsToken) return;
+          picker.reopening = false;
+          actions.showToast(tr('Não foi possível reabrir a sessão: {0}', [describeError(error)]), 'error');
+          render();
+        });
     },
 
     setChatDraft(text) {
