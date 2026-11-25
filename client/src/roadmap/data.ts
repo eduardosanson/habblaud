@@ -19,6 +19,8 @@ export type Size = 'XS' | 'S' | 'M' | 'L' | 'XL';
 export type LinkType = 'blocks' | 'caused_by' | 'fixes' | 'relates_to' | 'duplicates';
 
 export interface Agent {
+  /** O registro não diz qual agente foi: a tela não atribui a nenhum provider. */
+  anonymous?: boolean;
   id: string;
   name: string;
   role: string;
@@ -98,6 +100,15 @@ export interface ExecutionLink {
   agentId: string;
 }
 
+/** O que o agente escreveu ao encerrar o trabalho: é com isto que a pessoa decide uma revisão. */
+export interface Delivery {
+  summary: string;
+  author: string;
+  model: string;
+  at: string;
+  changedFiles: string[];
+}
+
 export interface Plan {
   /** Chave estável exibida (ex.: 3.7); é o identificador de navegação na UI. */
   id: string;
@@ -124,6 +135,7 @@ export interface Plan {
   estimate: Estimate | null;
   actual?: Actual;
   execution?: ExecutionLink;
+  delivery?: Delivery;
   sizeBasis: string;
   blockReason?: string;
   unblock?: string[];

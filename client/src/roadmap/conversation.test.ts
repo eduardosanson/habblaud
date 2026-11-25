@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { messageEl } from './conversation';
+import { messageEl, connectionLabel } from './conversation';
 
 // O Vitest roda em `node`: este `document` mínimo guarda só o que a montagem da mensagem usa.
 class FakeNode {
@@ -81,5 +81,13 @@ describe('mensagem da gaveta do roadmap', () => {
 
     expect(tags(el)).not.toContain('strong');
     expect(el.textContent).toContain('o que é **isto**?');
+  });
+});
+
+describe('connectionLabel', () => {
+  it('com sessão viva escolhida, não diz que não há conversa', () => {
+    expect(connectionLabel('closed', true)).toBe('Pronto para perguntar');
+    expect(connectionLabel('closed', false)).toBe('Sem conversa ativa');
+    expect(connectionLabel('live', false)).toBe('Conectado');
   });
 });

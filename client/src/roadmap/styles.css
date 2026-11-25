@@ -2117,6 +2117,10 @@ img {
   margin-bottom: 7px;
 }
 
+.rp-delivery {
+  overflow-wrap: anywhere;
+}
+
 .rp-detail__footer {
   display: flex;
   flex-wrap: wrap;

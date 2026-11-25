@@ -195,33 +195,74 @@ def test_approval_transport_falls_back_when_the_office_cannot_answer(tmp_path, m
         plugin._approval_present(Request())
 
 
-def test_inbox_poller_injects_and_acks_only_what_it_delivered(tmp_path, monkeypatch):
-    plugin = load(tmp_path)
-    plugin._plugin_profile = "developer"
-    acks = []
-
-    class Ctx:
-        def inject_message(self, text, *, session_key=None):
-            return session_key == "s1"
-
-    plugin._ctx = Ctx()
+def office(plugin, monkeypatch, sessions, text="Pergunta pelo roadmap: como ficou?"):
+    """Escritório falso: entrega uma mensagem por sessão, uma vez, e guarda as confirmações."""
+    acks, served = [], set()
 
     def fake_http(path, body=None, *, timeout=3.0):
         if path == "/api/hermes/sessions":
-            return {"sessions": [{"profile": "developer", "account": "developer", "session": "s1"},
-                                 {"profile": "developer", "account": "developer", "session": "s2"}]}
+            return {"sessions": [{"profile": "developer", "account": "developer", "session": s} for s in sessions]}
         if path == "/api/mod/inbox":
-            return {"messages": [{"id": f"m-{body['session']}", "text": "oi"}]}
+            sid = body["session"]
+            if sid in served:
+                return {"messages": []}
+            served.add(sid)
+            return {"messages": [{"id": f"m-{sid}", "text": text}]}
         if path == "/api/mod/inbox/ack":
             acks.append(body)
             return {"ok": True}
         return None
 
     monkeypatch.setattr(plugin, "_http_json", fake_http)
+    monkeypatch.setattr(plugin, "_publish", lambda event: None)
+    monkeypatch.setattr(plugin, "_start_poller", lambda: None)
+    return acks
+
+
+class Ctx:
+    def __init__(self, accepted=True):
+        self.accepted, self.calls = accepted, []
+
+    def inject_message(self, text, *, session_key=None):
+        self.calls.append((text, session_key))
+        return self.accepted
+
+
+def test_inbox_injects_with_the_route_key_of_the_session(tmp_path, monkeypatch):
+    plugin = load(tmp_path)
+    plugin._plugin_profile = "developer"
+    plugin._ctx = ctx = Ctx()
+    office(plugin, monkeypatch, ["local-abc"])
+    monkeypatch.setattr(plugin, "_session_route", lambda: "agent:main:local:dm:local-abc")
+    plugin._on_session_open(session_id="local-abc", platform="cli")
     plugin._poll_once()
-    assert [a["results"][0]["id"] for a in acks] == ["m-s1", "m-s2"]
-    assert acks[0]["results"][0]["ok"] is True
-    assert acks[1]["results"][0]["ok"] is False and acks[1]["results"][0]["retry"] is True
+    assert ctx.calls[0][1] == "agent:main:local:dm:local-abc"
+
+
+def test_inbox_only_confirms_when_the_question_enters_the_session(tmp_path, monkeypatch):
+    plugin = load(tmp_path)
+    plugin._plugin_profile = "developer"
+    plugin._ctx = Ctx()
+    acks = office(plugin, monkeypatch, ["s1"])
+    plugin._poll_once()
+    assert acks == [], "aceitar o agendamento não é entregar"
+    plugin._pre_llm_call(session_id="s2", user_message="Pergunta pelo roadmap: como ficou?")
+    plugin._pre_llm_call(session_id="s1", user_message="outra coisa")
+    assert acks == []
+    plugin._pre_llm_call(session_id="s1", user_message="Pergunta pelo roadmap: como ficou?")
+    assert acks == [{"session": "s1", "results": [{"id": "m-s1", "ok": True}]}]
+    plugin._pre_llm_call(session_id="s1", user_message="Pergunta pelo roadmap: como ficou?")
+    assert len(acks) == 1
+
+
+def test_inbox_returns_to_the_queue_what_the_host_refused(tmp_path, monkeypatch):
+    plugin = load(tmp_path)
+    plugin._plugin_profile = "developer"
+    plugin._ctx = ctx = Ctx(accepted=False)
+    acks = office(plugin, monkeypatch, ["s1"])
+    plugin._poll_once()
+    assert ctx.calls[0][1] == "s1", "sem chave de rota conhecida, tenta o id da sessão"
+    assert acks[0]["results"][0]["ok"] is False and acks[0]["results"][0]["retry"] is True
 
 
 def test_register_optional_hooks_and_approval_transport(tmp_path, monkeypatch):

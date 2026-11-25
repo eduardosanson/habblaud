@@ -28,7 +28,7 @@ import {
   type Plan,
 } from './data';
 import { hydrateLive, mapRoadmap } from './live';
-import type { ApiItem, ApiPhase, ApiSession, ApiSnapshot } from './pipeline';
+import type { ApiItem, ApiItemExecution, ApiPhase, ApiSession, ApiSnapshot } from './pipeline';
 
 function item(partial: Partial<ApiItem> & Pick<ApiItem, 'id' | 'key' | 'phaseId' | 'title' | 'status'>): ApiItem {
   return {
@@ -303,5 +303,35 @@ describe('itens terminados não contam como ativos', () => {
     expect(workFocus(withStatuses('done', 'backlog'))).toBeUndefined();
     expect(workFocus(withStatuses('done', 'review'))?.id).toBe('1.2');
     expect(workFocus(withStatuses('review', 'in_progress'))?.id).toBe('1.2');
+  });
+});
+
+describe('o que a pessoa precisa para decidir', () => {
+  const run = (over: Partial<ApiItemExecution>): ApiItemExecution => ({
+    id: 1, roadmapId: 'praca', itemId: 'praca-2.1', source: 'agent', profile: 'nina', provider: 'claude-code', model: 'claude-sonnet',
+    workerSessionId: 'sess-nina', startedAt: '2026-11-19T10:00:00Z', endedAt: '2026-11-19T11:00:00Z', outcome: 'completed', ...over,
+  });
+
+  it('o plano traz a entrega da execução mais recente que escreveu um resumo', () => {
+    hydrateLive([fixture], [], [
+      run({ id: 1, summary: 'primeira tentativa', endedAt: '2026-11-19T09:00:00Z' }),
+      run({ id: 2, summary: 'Feito: corrimão. Como conferir: abrir o mapa.', changedFiles: ['mapa.ts'] }),
+      run({ id: 3, summary: '', endedAt: '2026-11-19T12:00:00Z' }),
+    ]);
+    expect(planById('praca', '2.1')?.delivery).toMatchObject({
+      summary: 'Feito: corrimão. Como conferir: abrir o mapa.', author: 'nina', model: 'claude-sonnet', changedFiles: ['mapa.ts'],
+    });
+  });
+
+  it('sem resumo nenhum, não há entrega a mostrar', () => {
+    hydrateLive([fixture], [], [run({ summary: '   ' })]);
+    expect(planById('praca', '2.1')?.delivery).toBeUndefined();
+  });
+
+  it('ação sem agente identificado não é atribuída ao Hermes', () => {
+    const copy = structuredClone(fixture);
+    copy.roadmap.activity = [{ id: 9, actor: 'agent', action: 'item.done', summary: 'x', itemId: 'praca-1.1', revision: 7, at: '2026-11-01T10:00:00Z' }];
+    hydrateLive([copy], []);
+    expect(AGENTS['agent']).toMatchObject({ name: 'Agente', anonymous: true });
   });
 });

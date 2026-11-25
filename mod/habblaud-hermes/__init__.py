@@ -69,6 +69,9 @@ _history_sent: set[str] = set()
 _history_lock = threading.Lock()
 _live: dict[str, dict[str, Any]] = {}
 _live_lock = threading.Lock()
+# Perguntas aceitas pelo Hermes que ainda não apareceram na sessão (id da sessão -> [(id, texto, quando)]).
+_pending: dict[str, list[tuple[str, str, float]]] = {}
+PENDING_KEEP_S = 600.0
 _heartbeat_at = 0.0
 _approval_context: dict[str, dict[str, str]] = {}
 _approval_lock = threading.Lock()
@@ -382,6 +385,27 @@ def _publish(event: Dict[str, Any]) -> None:
 # Hooks (todos observadores; sempre devolvem None)
 # ---------------------------------------------------------------------------
 
+def _session_route() -> str:
+    """Chave de rota da sessão do contexto atual: é por ela que o Hermes de gateway único entrega a mensagem."""
+    try:
+        from gateway.session_context import get_session_env
+
+        return str(get_session_env("HERMES_SESSION_KEY", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def _confirm_delivery(session_id: str, text: str) -> None:
+    """A pergunta entrou na sessão (apareceu como mensagem do turno): só agora ela está entregue."""
+    with _live_lock:
+        waiting = _pending.get(session_id, [])
+        found = next((item for item in waiting if item[1].strip() in text), None)
+        if found:
+            waiting.remove(found)
+    if found:
+        _http_json("/api/mod/inbox/ack", {"session": session_id, "results": [{"id": found[0], "ok": True}]}, timeout=4.0)
+
+
 def _remember_session(session_id: Any, status: str = "idle", *, platform: Any = None, project: Any = None) -> None:
     """Guarda a sessão viva para o heartbeat recriar o agente depois de um reinício do Habblaud."""
     sid = str(session_id or "")
@@ -394,6 +418,9 @@ def _remember_session(session_id: Any, status: str = "idle", *, platform: Any = 
             info["platform"] = str(platform)
         if project:
             info["project"] = str(project)
+        route = _session_route()
+        if route:
+            info["route"] = route
 
 
 def _forget_session(session_id: Any) -> None:
@@ -510,6 +537,7 @@ def _pre_llm_call(**kw: Any) -> None:
         _remember_session(sid, "working", platform=kw.get("platform"))
         _publish_history(sid, kw.get("conversation_history"))
         text = _text_of(kw.get("user_message"))
+        _confirm_delivery(sid, text)
         if text.strip():
             _publish({"type": "user_message", "session_id": sid, "text": text, "turn_id": kw.get("turn_id")})
     _publish({"type": "session_busy", "session_id": sid, "platform": kw.get("platform") or "hermes"})
@@ -738,15 +766,23 @@ def _poll_once() -> None:
                 mid, text = message.get("id"), message.get("text")
                 if not isinstance(mid, str) or not isinstance(text, str) or not text.strip():
                     continue
+                with _live_lock:
+                    key = _live.get(session, {}).get("route") or session
+                    # Antes de injetar: o turno pode começar noutra thread antes de a chamada voltar.
+                    waiting = _pending.setdefault(session, [])
+                    waiting[:] = [item for item in waiting if time.monotonic() - item[2] < PENDING_KEEP_S]
+                    entry = (mid, text, time.monotonic())
+                    waiting.append(entry)
                 try:
-                    delivered = bool(ctx.inject_message(text, session_key=session))
+                    accepted = bool(ctx.inject_message(text, session_key=key))
                 except Exception as exc:
                     _warn(exc)
-                    delivered = False
-                # Outro processo do mesmo perfil pode ser o dono da sessão: devolve à fila para ele buscar.
-                if delivered:
-                    _http_json("/api/mod/inbox/ack", {"session": session, "results": [{"id": mid, "ok": True}]}, timeout=4.0)
-                else:
+                    accepted = False
+                if not accepted:
+                    # Outro processo do mesmo perfil pode ser o dono da sessão: devolve à fila para ele buscar.
+                    with _live_lock:
+                        if entry in _pending.get(session, []):
+                            _pending[session].remove(entry)
                     _http_json(
                         "/api/mod/inbox/ack",
                         {"session": session, "results": [{"id": mid, "ok": False, "retry": True, "error": "sessão não está neste processo do Hermes"}]},
