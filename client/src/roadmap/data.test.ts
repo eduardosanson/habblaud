@@ -20,7 +20,9 @@ import {
   replaceSessions,
   roadmapById,
   roadmapPlans,
+  roadmapState,
   typeCounts,
+  workFocus,
   workLinks,
   type Agent,
   type Plan,
@@ -179,11 +181,11 @@ function phaseIn(roadmap: ReturnType<typeof mapRoadmap>, id: string) {
 describe('tradução do snapshot do pipeline', () => {
   it('exclui cancelados do denominador e mantém a mesma contagem em fases e roadmap', () => {
     const roadmap = mapRoadmap(fixture, new Map([['nina', nina]]));
-    expect(overallCounts(roadmap)).toEqual({ done: 1, active: 1, blocked: 0, future: 2, total: 4 });
+    expect(overallCounts(roadmap)).toEqual({ done: 1, active: 1, review: 0, blocked: 0, future: 2, total: 4 });
     const sum = roadmap.phases.map((p) => countPlans(p.plans));
     expect(sum.reduce((acc, c) => acc + c.total, 0)).toBe(4);
     expect(sum.reduce((acc, c) => acc + c.done, 0)).toBe(1);
-    expect(phaseCounts(roadmap.phases[0]!)).toEqual({ done: 1, active: 0, blocked: 0, future: 0, total: 1 });
+    expect(phaseCounts(roadmap.phases[0]!)).toEqual({ done: 1, active: 0, review: 0, blocked: 0, future: 0, total: 1 });
     expect(phaseStatus(roadmap.phases[0]!)).toBe('done');
     expect(phaseStatus(roadmap.phases[1]!)).toBe('active');
   });
@@ -249,5 +251,57 @@ describe('hidratação dos índices', () => {
     expect(SESSIONS[0]?.capabilities).toContain('roadmap.write');
     expect(defaultPlanFor(roadmapById('praca')!).id).toBe('2.1');
     expect(ROADMAPS[0]?.snapshotLabel).toBe('revisão 7');
+  });
+});
+
+describe('itens terminados não contam como ativos', () => {
+  const agents = new Map([['nina', nina]]);
+  const withStatuses = (...statuses: ApiItem['status'][]) =>
+    mapRoadmap(
+      snapshot([
+        phase({
+          id: 'praca-p1',
+          index: 1,
+          name: 'Fundação',
+          items: statuses.map((status, i) => item({ id: `praca-1.${i + 1}`, key: `1.${i + 1}`, phaseId: 'praca-p1', title: `Item ${i + 1}`, status })),
+        }),
+        phase({ id: 'praca-p2', index: 2, name: 'Circulação', items: [] }),
+      ]),
+      agents,
+    );
+
+  it('item em revisão é contado à parte de em andamento', () => {
+    const roadmap = withStatuses('review', 'review', 'in_progress', 'done');
+    expect(overallCounts(roadmap)).toMatchObject({ active: 1, review: 2, done: 1 });
+    expect(planIn(roadmap, '1.1')?.status).toBe('review');
+  });
+
+  it('fase só com concluídos e itens em revisão fica em revisão, não em andamento', () => {
+    expect(phaseStatus(withStatuses('review', 'done').phases[0]!)).toBe('review');
+  });
+
+  it('roadmap com tudo concluído é concluído, mesmo que o pipeline ainda diga active', () => {
+    const roadmap = withStatuses('done', 'done');
+    expect(roadmap.status).toBe('active');
+    expect(roadmapState(roadmap)).toBe('done');
+    expect(roadmap.milestone.status).toBe('done');
+    expect(roadmap.workHeadline).toBe('Nada em andamento: 2 de 2 itens concluídos.');
+  });
+
+  it('roadmap que só espera revisão é mostrado em revisão', () => {
+    const roadmap = withStatuses('review', 'done');
+    expect(roadmapState(roadmap)).toBe('review');
+    expect(roadmap.milestone.status).toBe('review');
+    expect(roadmap.workHeadline).toBe('0 em andamento, 1 em revisão e o restante no backlog.');
+  });
+
+  it('roadmap com item parado no backlog continua ativo', () => {
+    expect(roadmapState(withStatuses('done', 'backlog'))).toBe('active');
+  });
+
+  it('trabalho agora não elege item concluído nem futuro como foco', () => {
+    expect(workFocus(withStatuses('done', 'backlog'))).toBeUndefined();
+    expect(workFocus(withStatuses('done', 'review'))?.id).toBe('1.2');
+    expect(workFocus(withStatuses('review', 'in_progress'))?.id).toBe('1.2');
   });
 });

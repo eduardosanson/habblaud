@@ -160,6 +160,7 @@ export function renderConversation(state: AppState, actions: AppActions): HTMLEl
       ? selectedPlan
       : focusPhase.plans.find((p) => p.status === 'active') ??
         focusPhase.plans.find((p) => p.status === 'blocked') ??
+        focusPhase.plans.find((p) => p.status === 'review') ??
         focusPhase.plans[0]) ??
     selectedPlan;
   const sameContext = (a: ConversationContext, b: ConversationContext): boolean =>

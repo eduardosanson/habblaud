@@ -4,7 +4,7 @@ import type { ApiSessionOptions } from './pipeline';
 import type { SessionChoice } from './session-picker';
 
 export type Variant = 'overview' | 'phases' | 'backlog' | 'work';
-export type Filter = 'all' | 'active' | 'blocked' | 'done' | 'future';
+export type Filter = 'all' | 'active' | 'review' | 'blocked' | 'done' | 'future';
 export type BacklogTypeFilter = 'all' | WorkItemType;
 export type StreamStatus = 'connecting' | 'live' | 'reconnecting' | 'closed';
 

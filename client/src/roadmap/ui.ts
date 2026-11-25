@@ -110,6 +110,7 @@ export function agentIdentity(
 export function statusLabel(status: PlanStatus | 'draft' | 'risk'): string {
   if (status === 'done') return tr('Concluído');
   if (status === 'active') return tr('Em andamento');
+  if (status === 'review') return tr('Em revisão');
   if (status === 'blocked') return tr('Bloqueado');
   if (status === 'future') return tr('Futuro');
   if (status === 'draft') return tr('Rascunho');
@@ -129,7 +130,6 @@ export function statusPill(status: PlanStatus | 'draft' | 'risk', label?: string
 export function planStatusLabel(plan: Plan): string {
   if (plan.status === 'future' && plan.pipelineStatus === 'ready') return tr('Pronto');
   if (plan.status === 'future' && plan.pipelineStatus === 'backlog') return tr('Backlog');
-  if (plan.status === 'active' && plan.pipelineStatus === 'review') return tr('Em revisão');
   return statusLabel(plan.status);
 }
 
@@ -184,24 +184,21 @@ export function statusBar(
   return bar;
 }
 
-export function countLabel(kind: 'done' | 'active' | 'blocked' | 'future', n: number): string {
+export function countLabel(kind: PlanStatus, n: number): string {
   if (kind === 'done') return n === 1 ? tr('1 concluído') : tr('{0} concluídos', [n]);
   if (kind === 'active') return n === 1 ? tr('1 em andamento') : tr('{0} em andamento', [n]);
+  if (kind === 'review') return tr('{0} em revisão', [n]);
   if (kind === 'blocked') return n === 1 ? tr('1 bloqueado') : tr('{0} bloqueados', [n]);
   return n === 1 ? tr('1 futuro') : tr('{0} futuros', [n]);
 }
 
 export function legend(counts: StatusCounts, opts: { skipZero?: boolean } = {}): HTMLElement {
   const el = h('span', { class: 'rp-legend' });
-  const rows: [keyof StatusCounts, 'done' | 'active' | 'blocked' | 'future'][] = [
-    ['done', 'done'],
-    ['active', 'active'],
-    ['blocked', 'blocked'],
-    ['future', 'future'],
-  ];
-  for (const [key, kind] of rows) {
-    const n = counts[key];
-    if (opts.skipZero && n === 0) continue;
+  const kinds: PlanStatus[] = ['done', 'active', 'review', 'blocked', 'future'];
+  for (const kind of kinds) {
+    const n = counts[kind];
+    // "Em revisão" só entra na legenda quando existe.
+    if (n === 0 && (opts.skipZero || kind === 'review')) continue;
     el.append(
       h(
         'span',

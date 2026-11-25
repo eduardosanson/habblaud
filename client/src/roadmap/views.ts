@@ -22,7 +22,9 @@ import {
   planStepCounts,
   roadmapById,
   roadmapPlans,
+  roadmapState,
   typeCounts,
+  workFocus,
   workLinks,
   workTypeLabel,
   type Agent,
@@ -59,6 +61,7 @@ import {
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: tr('Tudo') },
   { id: 'active', label: tr('Em andamento') },
+  { id: 'review', label: tr('Em revisão') },
   { id: 'blocked', label: tr('Bloqueados') },
   { id: 'done', label: tr('Concluídos') },
   { id: 'future', label: tr('Futuros') },
@@ -91,16 +94,22 @@ function defaultConversationContext(state: AppState): { roadmapId: string; kind:
   return { roadmapId: roadmap.id, kind: 'roadmap' };
 }
 
-function roadmapStatusLabel(status: Roadmap['status']): string {
-  if (status === 'active') return tr('Ativo');
-  if (status === 'archived') return tr('Arquivado');
+function roadmapStatusLabel(roadmap: Roadmap): string {
+  const state = roadmapState(roadmap);
+  if (state === 'active') return tr('Ativo');
+  if (state === 'done') return tr('Concluído');
+  if (state === 'review') return tr('Em revisão');
+  if (state === 'archived') return tr('Arquivado');
   return tr('Rascunho');
 }
 
+function roadmapTone(roadmap: Roadmap): PlanStatus | 'draft' {
+  const state = roadmapState(roadmap);
+  return state === 'archived' ? 'future' : state;
+}
+
 function roadmapStatusPill(roadmap: Roadmap): HTMLElement {
-  if (roadmap.status === 'archived') return statusPill('future', roadmapStatusLabel(roadmap.status));
-  if (roadmap.status === 'draft') return statusPill('draft', roadmapStatusLabel(roadmap.status));
-  return statusPill('active', roadmapStatusLabel(roadmap.status));
+  return statusPill(roadmapTone(roadmap), roadmapStatusLabel(roadmap));
 }
 
 function typeChip(type: WorkItemType): HTMLElement {
@@ -324,12 +333,12 @@ function renderRoadmapBar(state: AppState, actions: AppActions): HTMLElement {
         attrs: { type: 'button', role: 'option', 'aria-selected': String(active) },
         on: { click: () => actions.selectRoadmap(r.id) },
       },
-      statusDot(r.status === 'active' ? 'active' : 'future'),
+      statusDot(roadmapTone(r)),
       h(
         'span',
         { class: 'rp-roadmap-menu__main' },
         h('span', { class: 'rp-roadmap-menu__title' }, h('strong', { text: r.title }), active ? icon('check', 'rp-roadmap-menu__check') : null),
-        h('span', { class: 'rp-roadmap-menu__meta', text: tr('{0} · {1}/{2} itens · Fase {3}', [roadmapStatusLabel(r.status), c.done, c.total, p?.index ?? '—']) }),
+        h('span', { class: 'rp-roadmap-menu__meta', text: tr('{0} · {1}/{2} itens · Fase {3}', [roadmapStatusLabel(r), c.done, c.total, p?.index ?? '—']) }),
       ),
     );
   });
@@ -351,7 +360,7 @@ function renderRoadmapBar(state: AppState, actions: AppActions): HTMLElement {
         { class: 'rp-roadmap-switch__main' },
         h('span', { class: 'rp-roadmap-switch__eyebrow', text: tr('ROADMAP ATUAL') }),
         h('strong', { class: 'rp-roadmap-switch__title', text: roadmap.title }),
-        h('span', { class: 'rp-roadmap-switch__meta', text: tr('{0} · {1}/{2} itens · Fase {3}', [roadmapStatusLabel(roadmap.status), counts.done, counts.total, phase?.index ?? '—']) }),
+        h('span', { class: 'rp-roadmap-switch__meta', text: tr('{0} · {1}/{2} itens · Fase {3}', [roadmapStatusLabel(roadmap), counts.done, counts.total, phase?.index ?? '—']) }),
       ),
       roadmapStatusPill(roadmap),
       icon('chevronDown', 'rp-chevron'),
@@ -612,6 +621,7 @@ function renderHero(roadmap: Roadmap, counts: StatusCounts): HTMLElement {
 function statusLabelForBar(status: PlanStatus): string {
   if (status === 'done') return tr('concluído');
   if (status === 'active') return tr('em andamento');
+  if (status === 'review') return tr('em revisão');
   if (status === 'blocked') return tr('bloqueado');
   return tr('futuro');
 }
@@ -628,6 +638,7 @@ function renderCurrentPhase(roadmap: Roadmap, phase: Phase, counts: StatusCounts
       { class: 'rp-stats' },
       h('div', { class: 'rp-stat' }, h('strong', { text: `${counts.done}/${counts.total}` }), h('span', { text: tr('planos concluídos') })),
       h('div', { class: 'rp-stat rp-stat--active' }, h('strong', { text: String(counts.active) }), h('span', { text: tr('em andamento') })),
+      counts.review > 0 ? h('div', { class: 'rp-stat' }, h('strong', { text: String(counts.review) }), h('span', { text: tr('em revisão') })) : null,
       h(
         'div',
         { class: 'rp-stat rp-stat--blocked' },
@@ -841,7 +852,7 @@ function renderMilestone(roadmap: Roadmap, actions: AppActions): HTMLElement {
   return h(
     'section',
     { class: 'rp-panel rp-milestone' },
-    sectionHead(tr('PRÓXIMO MARCO'), m.title, statusPill(m.status === 'at-risk' ? 'risk' : 'active')),
+    sectionHead(tr('PRÓXIMO MARCO'), m.title, statusPill(m.status === 'at-risk' ? 'risk' : m.status === 'done' || m.status === 'review' ? m.status : 'active')),
     m.date ? h('p', { class: 'rp-milestone__date' }, icon('calendar'), h('span', { text: `${m.date} · ${m.daysLeft}` })) : null,
     m.summary ? h('p', { class: 'rp-body', text: m.summary }) : null,
     m.criteria.length
@@ -1099,16 +1110,7 @@ function renderBacklogBrowser(
 
   const statusRow = h('div', { class: 'rp-filter-group', attrs: { role: 'group', 'aria-label': tr('Filtrar por status') } });
   for (const filter of FILTERS) {
-    const count =
-      filter.id === 'all'
-        ? statuses.total
-        : filter.id === 'active'
-          ? statuses.active
-          : filter.id === 'blocked'
-            ? statuses.blocked
-            : filter.id === 'done'
-              ? statuses.done
-              : statuses.future;
+    const count = filter.id === 'all' ? statuses.total : statuses[filter.id];
     statusRow.append(
       h(
         'button',
@@ -1337,8 +1339,7 @@ function renderPhaseBrowser(
 
   const filterRow = h('div', { class: 'rp-filter-group', attrs: { role: 'group', 'aria-label': tr('Filtrar planos por status') } });
   for (const filter of FILTERS) {
-    const count =
-      filter.id === 'all' ? counts.total : filter.id === 'active' ? counts.active : filter.id === 'blocked' ? counts.blocked : filter.id === 'done' ? counts.done : counts.future;
+    const count = filter.id === 'all' ? counts.total : counts[filter.id];
     filterRow.append(
       h(
         'button',
@@ -1384,7 +1385,9 @@ function renderPhaseBrowser(
             ? tr('{0} de {1} planos · {2}', [phaseCountsValue.done, phaseCountsValue.total, countLabel('blocked', blockedCount)])
             : phaseCountsValue.active > 0
               ? tr('{0} de {1} planos · {2}', [phaseCountsValue.done, phaseCountsValue.total, countLabel('active', phaseCountsValue.active)])
-              : tr('{0} de {1} planos', [phaseCountsValue.done, phaseCountsValue.total]),
+              : phaseCountsValue.review > 0
+                ? tr('{0} de {1} planos · {2}', [phaseCountsValue.done, phaseCountsValue.total, countLabel('review', phaseCountsValue.review)])
+                : tr('{0} de {1} planos', [phaseCountsValue.done, phaseCountsValue.total]),
       }),
       h(
         'span',
@@ -1542,8 +1545,8 @@ function renderPlanRow(plan: Plan, selected: boolean, actions: AppActions): HTML
   const visibleDeps = depChips.slice(0, 2);
   const extraDeps = depChips.length - visibleDeps.length;
   const statusLine =
-    plan.pipelineStatus === 'review'
-      ? h('span', { class: 'rp-plan-row__status is-active' }, icon('work'), h('span', { text: tr('Em revisão · {0}', [plan.updatedAt]) }))
+    plan.status === 'review'
+      ? h('span', { class: 'rp-plan-row__status is-review' }, icon('work'), h('span', { text: tr('Em revisão · {0}', [plan.updatedAt]) }))
       : plan.status === 'active'
         ? h('span', { class: 'rp-plan-row__status is-active' }, icon('work'), h('span', { text: tr('Agora: {0}', [step?.title ?? plan.nextStep ?? plan.title]) }))
         : plan.status === 'blocked'
@@ -2010,9 +2013,12 @@ export function renderWork(state: AppState, actions: AppActions): HTMLElement {
   const plans = roadmapPlans(roadmap);
   const active = plans.filter((p) => p.status === 'active');
   const blocked = plans.filter((p) => p.status === 'blocked');
+  const review = plans.filter((p) => p.status === 'review');
   const allFuture = plans.filter((p) => p.status === 'future');
   const future = allFuture.slice(0, 3);
-  const focus = active[0] ?? defaultPlanFor(roadmap);
+  const current = workFocus(roadmap);
+  // Sem trabalho em foco, os botões levam ao item padrão; o cartão diz que não há nada em andamento.
+  const focus = current ?? defaultPlanFor(roadmap);
   const focusAgent = ownerOf(focus);
   const focusStep = nextPendingStep(focus);
 
@@ -2034,7 +2040,7 @@ export function renderWork(state: AppState, actions: AppActions): HTMLElement {
           h(
             'button',
             { class: 'rp-btn rp-btn--primary', attrs: { type: 'button' }, on: { click: () => actions.openPlan(focus.id, roadmap.id) } },
-            h('span', { text: tr('Abrir plano atual') }),
+            h('span', { text: current ? tr('Abrir plano atual') : tr('Abrir roadmap em fases') }),
             icon('arrowRight'),
           ),
           h(
@@ -2045,7 +2051,7 @@ export function renderWork(state: AppState, actions: AppActions): HTMLElement {
               on: { click: () => actions.openConversation({ roadmapId: roadmap.id, kind: 'plan', id: focus.id }) },
             },
             icon('chat'),
-            h('span', { text: tr('Perguntar a {0}', [focusAgent?.name ?? tr('o agente')]) }),
+            h('span', { text: focusAgent ? tr('Perguntar a {0}', [focusAgent.name]) : tr('Perguntar ao agente') }),
           ),
         ),
         h(
@@ -2056,26 +2062,39 @@ export function renderWork(state: AppState, actions: AppActions): HTMLElement {
           h('div', { class: 'rp-focus__metric' }, h('strong', { text: roadmap.milestone.daysLeft }), h('span', { text: tr('para o marco') })),
         ),
       ),
-      h(
-        'div',
-        { class: 'rp-focus__card' },
-        h('div', { class: 'rp-focus__card-top' }, h('span', { class: 'rp-label', text: tr('FOCO ATUAL') }), planStatusPill(focus)),
-        h('h2', { class: 'rp-h2', text: `${focus.id} ${focus.title}` }),
-        h('p', { class: 'rp-body', text: focus.objective }),
-        focusAgent ? agentIdentity(focusAgent, { compact: true }) : null,
-        h('p', { class: 'rp-focus__step' }, icon('work'), h('span', { text: tr('Agora: {0}', [focusStep?.title ?? focus.nextStep ?? focus.title]) })),
-        statusBar(
-          focus.steps.map((s) => ({ status: s.status, label: s.title })),
-          { label: tr('Progresso do plano {0}', [focus.id]), size: 'md' },
-        ),
-        h('span', { class: 'rp-small rp-muted', text: planProgressText(focus) }),
-        estimateSummary(focus),
-      ),
+      current
+        ? h(
+            'div',
+            { class: 'rp-focus__card' },
+            h('div', { class: 'rp-focus__card-top' }, h('span', { class: 'rp-label', text: tr('FOCO ATUAL') }), planStatusPill(focus)),
+            h('h2', { class: 'rp-h2', text: `${focus.id} ${focus.title}` }),
+            h('p', { class: 'rp-body', text: focus.objective }),
+            focusAgent ? agentIdentity(focusAgent, { compact: true }) : null,
+            focus.status === 'active'
+              ? h('p', { class: 'rp-focus__step' }, icon('work'), h('span', { text: tr('Agora: {0}', [focusStep?.title ?? focus.nextStep ?? focus.title]) }))
+              : focus.status === 'review'
+                ? h('p', { class: 'rp-focus__step' }, icon('clock'), h('span', { text: tr('Terminado pelo agente; espera a sua revisão.') }))
+                : null,
+            statusBar(
+              focus.steps.map((s) => ({ status: s.status, label: s.title })),
+              { label: tr('Progresso do plano {0}', [focus.id]), size: 'md' },
+            ),
+            h('span', { class: 'rp-small rp-muted', text: planProgressText(focus) }),
+            estimateSummary(focus),
+          )
+        : h(
+            'div',
+            { class: 'rp-focus__card' },
+            h('span', { class: 'rp-label', text: tr('FOCO ATUAL') }),
+            h('h2', { class: 'rp-h2', text: tr('Nada em andamento') }),
+            h('p', { class: 'rp-body', text: tr('Nenhum item está sendo trabalhado nem esperando revisão neste roadmap.') }),
+          ),
     ),
     h(
       'div',
       { class: 'rp-work-grid' },
       renderWorkLane(tr('Em andamento'), active.length, 'active', active.map((p) => renderWorkCard(p, actions))),
+      review.length ? renderWorkLane(tr('Em revisão'), review.length, 'review', review.map((p) => renderWorkCard(p, actions))) : null,
       renderWorkLane(tr('Bloqueado'), blocked.length, 'blocked', blocked.map((p) => renderWorkCard(p, actions))),
       renderWorkLane(
         tr('A seguir'),
