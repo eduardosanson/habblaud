@@ -2,7 +2,8 @@
 
 > **Desatualizado na parte de conversa.** A seção 4 (API de conversa) e a seção 5 (agente dentro do pipeline) não valem
 > mais: o pipeline passou a ser só registro e a conversa vai direto à sessão real do agente. Veja
-> [`hermes-pipeline-registry-prompt.md`](hermes-pipeline-registry-prompt.md) e `docs/plans/ponte-sessoes/spec.md`.
+> [`hermes-pipeline-registry-prompt.md`](hermes-pipeline-registry-prompt.md) e `docs/plans/ponte-sessoes-viva/spec.md`
+> (o pipeline final expõe só as execuções: `workerSessionId`, `provider` e `cwd`).
 
 Status: proposta para a implementação no projeto `hermes-pipeline`.
 Princípio: o **Hermes Pipeline** é a fonte da verdade e o orquestrador. O **agente** é quem movimenta o

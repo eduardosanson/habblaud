@@ -33,25 +33,33 @@ HABBLAUD_ROADMAP_TOKEN=... npm run dev
 - **Backlog**: épicos (fases), histórias, tasks e bugs com tipo, status, peso XS–XL, estimativa P50/P80 em tokens,
   dias humanos derivados, realizado, execução e vínculos canônicos com o lado inverso derivado.
 - **Trabalho agora**: foco, faixas de em andamento/bloqueado/a seguir, caminho do bloqueio e o que o marco espera.
-- **Conversa**: abra um plano e pergunte. O Habblaud descobre pelo registro do pipeline quem trabalhou no plano, entrega
-  a pergunta na sessão desse agente e mostra o que ele responde depois (lido da conversa da própria sessão, pelo
-  terminal do Habblaud). Quando o agente mover o roadmap, a página refaz o snapshot pelo evento do pipeline.
+- **Conversa**: abra um plano e pergunte. O Habblaud descobre pelo registro do pipeline quem trabalhou no plano e lista
+  essas sessões num seletor (vivas primeiro, a sugerida já escolhida; você pode trocar). Entrega a pergunta na sessão
+  escolhida e mostra o que ela responde depois (lido da conversa da própria sessão, pelo terminal do Habblaud). Quando o agente mover o roadmap, a página refaz o snapshot pelo evento do pipeline.
 
 ## Como a pergunta chega ao agente
 
-`POST /api/roadmap/converse` (só local) com `{roadmapId, itemId, text}`:
+O pipeline só registra execuções (`workerSessionId` + `provider` + `cwd`). O Habblaud monta a lista de sessões a partir
+delas (`GET /api/roadmaps/:id/items/:itemId/executions` e, sem nenhuma no item, `GET /api/roadmaps/:id/executions`) e
+cruza com os agentes vivos do escritório. Duas rotas locais, ambas só pelo próprio computador:
 
-1. Lê `participants` do item no pipeline; se o pipeline ainda não tem essa rota, usa o histórico de `executions`.
-2. Escolhe a sessão por regra fixa, sem LLM (`server/roadmap/router.ts`): o participante que está vivo no escritório e
-   aceita mensagem; senão o mais recente. A sessão vem de `resume` (pipeline novo) ou de `workerSessionId` + `provider`
-   da execução. Id de run do pipeline e `workerSessionId` vazio nunca viram sessão.
-3. Entrega pela fila de mensagens do escritório (`server/messages`), como se a pessoa tivesse digitado.
-4. Respostas: `202` entregue; `409 session_closed` sessão fechada (`details.route.resumable` diz se há como reabrir);
-   `404 no_session` ninguém registrado trabalhou no plano; `409 unavailable` a sessão não aceita mensagem agora.
+- `GET /api/roadmap/sessions?roadmapId=&itemId=` devolve `{options, suggested}`: cada opção traz `provider`, `sessionId`,
+  `live`, `agentId` (se viva), `profile`, `model`, `lastAt` e `scope` (`item` ou `roadmap`). Uma sessão aparece uma vez
+  (a execução mais recente) e execução sem `workerSessionId` não vira sessão. O `cwd` nunca sai do servidor.
+- `POST /api/roadmap/converse` com `{roadmapId, itemId, text, session?}`. Sem `session`, vale a sugerida. Com ela, só
+  vale uma sessão que o servidor listou (`400 unknown_session` fora disso).
 
-O `argv` de retomada que o pipeline registra é só dado: o Habblaud nunca o executa (`server/roadmap/harness.ts` monta o
-comando por lista fixa). Hoje só Claude Code (`claude --resume`) e Codex (`codex resume`) têm retomada verificada, e a
-gaveta ainda não reabre sessão sozinha: ela avisa que a sessão está fechada.
+Como o roteador escolhe (`server/roadmap/router.ts`), por regra fixa e sem LLM: a sessão viva e acessível primeiro, depois
+a mais recente; no item e, se ele não tem ninguém, no roadmap. O `provider` do pipeline (`claude-code`, `codex`, `opencode`,
+`antigravity`, `hermes`) vira o do Habblaud (`claude-code` → `claude`), e agente sem `provider` no escritório é Claude Code.
+
+A entrega vai pela fila de mensagens do escritório (`server/messages`), como se a pessoa tivesse digitado. Respostas:
+`202` entregue; `409 session_closed` sessão fechada ou sem o plugin de mensagens conectado; `404 no_session` ninguém
+registrou sessão; `409 unavailable` a sessão não aceita mensagem agora; erro do pipeline (por exemplo `401`) é repassado.
+
+O Habblaud nunca executa comando vindo do pipeline. A gaveta mostra sessão fechada na lista, mas não envia para ela e
+explica o motivo: reabrir sessão fechada fica para depois (só Claude Code e Codex têm retomada verificada em
+`server/roadmap/harness.ts`).
 
 ## Fronteira
 
@@ -94,7 +102,7 @@ snapshot.
 
 > **Pendente:** `scripts/roadmap-e2e.mjs` e `scripts/roadmap-pipeline-smoke.ts` ainda exercitam a conversa antiga, com o
 > agente dentro do pipeline (`/api/agent/sessions/:id/messages`), que o proxy do Habblaud já não repassa e que o pipeline
-> vai remover. Precisam ser reescritos para a ponte (pergunta por `/api/roadmap/converse` a uma sessão real). Não foram
+> já removeu. Precisam ser reescritos para a ponte (pergunta por `/api/roadmap/converse` a uma sessão real). Não foram
 > executados nesta mudança.
 
 ## Arquivos

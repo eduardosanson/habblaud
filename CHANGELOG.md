@@ -16,15 +16,19 @@ do meio (0.**3**.0).
   Hermes Pipeline, que não sabia o que os outros agentes fizeram nesta máquina. Agora o Habblaud descobre pelo registro
   do pipeline quem trabalhou no plano (sessão viva primeiro, senão a mais recente), entrega a pergunta na sessão dele
   pela fila de mensagens do escritório e mostra a resposta lida da conversa da própria sessão. Sem LLM no roteamento;
-  se a sessão estiver fechada, a gaveta avisa em vez de inventar resposta. O menu de sessões e os recibos de ação do
-  pipeline saíram da gaveta, e as sugestões viraram perguntas sobre o plano.
+  se a sessão estiver fechada, a gaveta avisa em vez de inventar resposta. Os recibos de ação do pipeline saíram da
+  gaveta, e as sugestões viraram perguntas sobre o plano.
 
 ### Corrigido
 
 - **Roadmap abre de novo com o pipeline que só registra.** A página `/roadmap` mostrava "Não foi possível ler o
   roadmap — 404" porque o pipeline removeu as rotas de conversa (`/api/agent/sessions`) e o Habblaud tratava esse 404
-  como falha total. Agora esse 404 vale "sem sessões": leitura e progresso voltam, e só a conversa com o agente fica
-  indisponível até a ponte de sessões. Outros erros (token inválido, servidor fora) continuam aparecendo.
+  como falha total. Agora a página não chama mais essa rota: os agentes e as sessões vêm das execuções que o pipeline
+  registra, e uma falha só nelas não derruba a página. O proxy libera as rotas `executions` do item e do roadmap e fecha
+  `participants`, que o pipeline não tem.
+- **Sessão do Claude Code viva era tratada como fechada.** A conversa do roadmap não reconhecia o `claude-code` que o
+  pipeline grava nas execuções e, no escritório, o agente do Claude Code vem sem `provider` (que quer dizer Claude).
+  Resultado: toda pergunta a uma sessão do Claude Code dava "sessão fechada". Agora as duas pontas se encontram.
 - **Proxy do roadmap só aceita leitura.** Qualquer rota permitida aceitava `POST` e repassava ao pipeline; agora o
   proxy só aceita `GET` (o `POST` da conversa tem rota própria, `/api/roadmap/converse`). A lista `HABBLAUD_ROADMAP_IDS`
   também passa a valer para as rotas de execuções e participantes do item.
@@ -52,6 +56,10 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Escolher a sessão com quem conversar no roadmap.** A gaveta ganhou um seletor com as sessões que trabalharam no
+  plano (vivas primeiro; a sugerida já vem escolhida). Sessão fechada aparece, mas não recebe a pergunta: a gaveta diz
+  que está fechada. Plano sem sessão registrada explica isso e desabilita o envio, e uma falha do pipeline aparece na
+  própria gaveta, com "Tentar de novo". O servidor só entrega em sessão que ele mesmo listou.
 - **Antigravity no escritório (MVP).** Sessões do Antigravity CLI (`agy`) entram pelo hook em
   `~/.gemini/config/hooks.json` (`npm run antigravity:install`): personagem, sala pelo projeto, status, título do turno e
   ferramentas. O uso vem do próprio `agy -p "/usage" --output-format json`, com os grupos Gemini, Claude/GPT e Argon;

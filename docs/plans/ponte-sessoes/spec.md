@@ -1,5 +1,9 @@
 # Spec: ponte de sessões — o Habblaud conversa com o agente real do item
 
+> **Superado em parte** por `docs/plans/ponte-sessoes-viva/spec.md`. O pipeline final não tem `participants`, `resume`,
+> `argv`, `harness`, `workdir` nem `role`: o Habblaud usa `workerSessionId` + `provider` + `cwd` das execuções.
+> Contrato do pipeline: `hermes-pipeline/docs/integration/contrato-restauracao-sessao.md`.
+
 ## Contexto de Negócio
 Hoje a conversa do roadmap passa por `/api/agent/*` do Hermes Pipeline, onde o agente "mora" no pipeline e não sabe
 o que os outros agentes fizeram nesta máquina. O pipeline passa a ser **só registro** (plano `registro-sessoes`, no
