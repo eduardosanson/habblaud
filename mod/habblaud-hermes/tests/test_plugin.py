@@ -28,12 +28,24 @@ def load(tmp_path: Path):
     return module
 
 
-def test_profile_home_and_project(tmp_path):
+def test_profile_home_and_project(tmp_path, monkeypatch):
     plugin = load(tmp_path)
     assert plugin._profile() == "developer"
     assert plugin._home().endswith("profiles/developer")
     assert plugin._project({}) == "/tmp/projeto"
     assert plugin._project({"project": "/p/loja"}) == "/p/loja"
+
+    # Worker dentro de um subdiretório do terminal.cwd (ex.: worktree em ~/Dev/projects/...)
+    sub = tmp_path / "projeto" / "wt-1"
+    sub.mkdir(parents=True)
+    prof = tmp_path / "profiles" / "developer"
+    (prof / "config.yaml").write_text(f"terminal:\n  cwd: {tmp_path / 'projeto'}\n", encoding="utf-8")
+    monkeypatch.chdir(sub)
+    assert plugin._project({}) == str(sub.resolve())
+
+    # HERMES_KANBAN_WORKSPACE tem prioridade sobre terminal.cwd
+    monkeypatch.setenv("HERMES_KANBAN_WORKSPACE", "/p/worktree-kanban")
+    assert plugin._project({}) == "/p/worktree-kanban"
 
 
 def test_tool_and_approval_events_use_the_hook_context(tmp_path, monkeypatch):

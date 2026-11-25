@@ -56,6 +56,8 @@ export interface OfficeDeps {
   names: NameStore;
   /** Nome escolhido pelo usuário para a sala da pasta (model/room-aliases.ts), se houver. */
   roomAlias?: (path: string) => string | undefined;
+  /** Resolve sala dinâmica (ex.: por roadmap na worktree); sem retorno cai na pasta `cwd`. */
+  resolveRoom?: (cwd: string, sessionId: string) => { id: string; name: string; path?: string } | undefined;
   version: string;
   /** Build do cliente servido (ver OfficeSnapshot.meta.build); ausente no modo dev e nos testes. */
   build?: () => string | undefined;
@@ -121,6 +123,7 @@ export interface SubInput {
 
 interface AgentRecord {
   info: AgentInfo;
+  cwd: string;
   history: Activity[];
   removeAt?: number;
   /** Início do turno atual (para "Concluiu em X"). */
@@ -199,6 +202,8 @@ export class Office {
   private rooms = new Map<string, { path: string; createdAt: number }>();
   private slots = new SlotAllocator(SLOT_COOLDOWN_MS);
   private roomNames = new Map<string, string>();
+  private dynamicRoomNames = new Map<string, string>();
+  private lastRoomSyncAt = 0;
   private feed: FeedItem[] = [];
   private pendingFeed: FeedItem[] = [];
   private pendingNotices: Notice[] = [];
@@ -287,6 +292,11 @@ export class Office {
     return [...this.agents.values()].map((r) => r.info);
   }
 
+  /** Pasta física do agente principal (pode diferir de roomPath quando agrupado por roadmap). */
+  agentCwd(id: string): string | undefined {
+    return this.agents.get(id)?.cwd;
+  }
+
   /** Pasta do projeto da sala (cwd original, sem normalizar). */
   roomPath(roomId: string): string | undefined {
     return this.rooms.get(roomId)?.path;
@@ -315,15 +325,21 @@ export class Office {
 
   addMain(p: MainInput): void {
     const now = this.now();
+    const normCwd = normalizeCwd(p.cwd);
     const existing = this.agents.get(p.id);
     if (existing) {
       // Sessão que voltou durante o período de graça.
       delete existing.removeAt;
+      if (normCwd !== existing.cwd) existing.cwd = normCwd;
+      this.syncRooms(now);
       this.setStatus(p.id, p.status, p.waitingFor);
       return;
     }
-    const roomId = normalizeCwd(p.cwd);
-    this.ensureRoom(roomId, now);
+    const target = this.resolveTargetRoom(normCwd, p.sessionId);
+    const roomId = target.id;
+    if (target.dynamicName) this.dynamicRoomNames.set(roomId, target.dynamicName);
+    else this.dynamicRoomNames.delete(roomId);
+    this.ensureRoom(roomId, now, target.path);
     const chosen = this.roomCharacter(roomId, p.id, p.sessionId);
     // A mesma sessão retomada noutro processo (ex.: "Assumir aqui") mantém o nome, mesmo com o processo antigo
     // ainda saindo do escritório.
@@ -352,7 +368,7 @@ export class Office {
       if (chosen.parts) info.parts = { ...chosen.parts };
     }
     if (p.status === 'waiting') info.waitingFor = p.waitingFor ?? tr('responder no terminal');
-    const rec: AgentRecord = { info, history: [] };
+    const rec: AgentRecord = { info, cwd: normCwd, history: [] };
     if (p.status === 'working') rec.turnStart = now;
     this.agents.set(p.id, rec);
     const acc = this.deps.accountName(p.account);
@@ -378,7 +394,24 @@ export class Office {
     info.stats = zeroStats();
     delete info.title;
     this.addActivity(id, { id: `${id}#clear:${++this.seq}`, at: this.now(), ...SPECIAL.cleared() }, true);
+    this.syncAgentRoom(rec, this.now());
+    this.pruneRooms();
+    this.recomputeRoomNames();
     this.markDirty();
+  }
+
+  /** Atualiza o diretório físico do agente principal e reavalia a sala dele. */
+  setCwd(id: string, cwd: string): void {
+    const rec = this.agents.get(id);
+    if (!rec || rec.info.kind !== 'main') return;
+    const normCwd = normalizeCwd(cwd);
+    if (rec.cwd === normCwd) return;
+    rec.cwd = normCwd;
+    if (this.syncAgentRoom(rec, this.now())) {
+      this.pruneRooms();
+      this.recomputeRoomNames();
+      this.markDirty();
+    }
   }
 
   setStatus(id: string, status: AgentStatus, waitingFor?: string): void {
@@ -928,9 +961,12 @@ export class Office {
     }
     // festa acabou / alarme expirou: o snapshot sai sem o efeito
     if (this.effects.prune(now)) this.markDirty();
+    if (this.deps.resolveRoom && now - this.lastRoomSyncAt >= 2_000) {
+      this.lastRoomSyncAt = now;
+      this.syncRooms(now);
+    }
     if (removed) {
-      const occupied = new Set([...this.agents.values()].map((r) => r.info.roomId));
-      for (const id of [...this.rooms.keys()]) if (!occupied.has(id)) this.rooms.delete(id);
+      this.pruneRooms();
       this.recomputeRoomNames();
       this.markDirty();
     }
@@ -1038,19 +1074,90 @@ export class Office {
     return out;
   }
 
-  private ensureRoom(roomId: string, now: number): void {
-    if (this.rooms.has(roomId)) return;
-    this.rooms.set(roomId, { path: roomId, createdAt: now });
+  private resolveTargetRoom(cwd: string, sessionId: string): { id: string; path: string; dynamicName?: string } {
+    const resolved = this.deps.resolveRoom?.(cwd, sessionId);
+    if (resolved) {
+      return { id: resolved.id, path: normalizeCwd(resolved.path || cwd), dynamicName: resolved.name };
+    }
+    return { id: cwd, path: cwd };
+  }
+
+  private syncAgentRoom(rec: AgentRecord, now: number): boolean {
+    const target = this.resolveTargetRoom(rec.cwd, rec.info.sessionId);
+    let changed = false;
+    if (target.dynamicName) {
+      if (this.dynamicRoomNames.get(target.id) !== target.dynamicName) {
+        this.dynamicRoomNames.set(target.id, target.dynamicName);
+        changed = true;
+      }
+    } else if (this.dynamicRoomNames.delete(target.id)) {
+      changed = true;
+    }
+    if (target.id !== rec.info.roomId) {
+      this.ensureRoom(target.id, now, target.path);
+      rec.info.roomId = target.id;
+      for (const sub of this.descendants(rec.info.id)) sub.info.roomId = target.id;
+      changed = true;
+    }
+    return changed;
+  }
+
+  private pruneRooms(): boolean {
+    const occupied = new Set([...this.agents.values()].map((r) => r.info.roomId));
+    let removed = false;
+    for (const id of [...this.rooms.keys()]) {
+      if (!occupied.has(id)) {
+        this.rooms.delete(id);
+        this.dynamicRoomNames.delete(id);
+        removed = true;
+      }
+    }
+    return removed;
+  }
+
+  /** Reavalia a sala dinâmica de cada agente principal (ex.: troca de roadmap ou título carregado da API). */
+  syncRooms(now = this.now()): void {
+    if (!this.deps.resolveRoom) return;
+    let changed = false;
+    for (const rec of this.agents.values()) {
+      if (rec.info.kind !== 'main' || rec.removeAt !== undefined) continue;
+      if (this.syncAgentRoom(rec, now)) changed = true;
+    }
+    if (this.pruneRooms()) changed = true;
+    if (changed) {
+      this.recomputeRoomNames();
+      this.markDirty();
+    }
+  }
+
+  private ensureRoom(roomId: string, now: number, path = roomId): void {
+    const existing = this.rooms.get(roomId);
+    if (existing) {
+      if (path && existing.path !== path) existing.path = path;
+      return;
+    }
+    this.rooms.set(roomId, { path, createdAt: now });
     this.recomputeRoomNames();
     this.notice('room', roomId, 'info', tr('🏗️ Nova sala: {0}', [this.roomName(roomId)]), roomId);
   }
 
   private recomputeRoomNames(): void {
-    const paths = new Map([...this.rooms].map(([id, r]) => [id, r.path]));
-    for (const r of this.demoSnap?.rooms ?? []) paths.set(r.id, r.path);
-    this.roomNames = roomDisplayNames(paths);
-    for (const [id, path] of paths) {
-      const alias = this.deps.roomAlias?.(path);
+    const folderPaths = new Map<string, string>();
+    const allPaths = new Map<string, string>();
+    for (const [id, r] of this.rooms) {
+      allPaths.set(id, r.path);
+      if (!this.dynamicRoomNames.has(id)) folderPaths.set(id, r.path);
+    }
+    for (const r of this.demoSnap?.rooms ?? []) {
+      allPaths.set(r.id, r.path);
+      folderPaths.set(r.id, r.path);
+    }
+    this.roomNames = roomDisplayNames(folderPaths);
+    for (const [id, dyn] of this.dynamicRoomNames) {
+      if (allPaths.has(id)) this.roomNames.set(id, dyn);
+    }
+    for (const [id, path] of allPaths) {
+      const alias = this.deps.roomAlias?.(id) ?? this.deps.roomAlias?.(path);
       if (alias) this.roomNames.set(id, alias);
     }
   }
