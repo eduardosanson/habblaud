@@ -21,6 +21,9 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Markdown na conversa do roadmap.** A resposta do agente aparecia na gaveta com os símbolos à mostra; agora
+  negrito, itálico, listas, títulos, citações e código aparecem formatados, com o mesmo renderizador seguro do
+  terminal. Links continuam como texto, com o endereço na dica.
 - **Roadmap abre de novo com o pipeline que só registra.** A página `/roadmap` mostrava "Não foi possível ler o
   roadmap — 404" porque o pipeline removeu as rotas de conversa (`/api/agent/sessions`) e o Habblaud tratava esse 404
   como falha total. Agora a página não chama mais essa rota: os agentes e as sessões vêm das execuções que o pipeline

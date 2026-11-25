@@ -18,13 +18,14 @@ import type { AppActions, AppState, ChatMessage } from './state';
 import { providerLabel } from './bridge';
 import { canSend, describeOption, initialChoice, sameSession } from './session-picker';
 import { emptyState, h, icon } from './ui';
+import { renderMarkdown } from '../ui/markdown';
 import type { Provider } from '../../../shared/types';
 
 function providerChip(provider: Provider): HTMLElement {
   return h('span', { class: `rp-provider rp-provider--${provider} rp-provider--xs`, text: providerLabel(provider) });
 }
 
-function messageEl(message: ChatMessage): HTMLElement {
+export function messageEl(message: ChatMessage): HTMLElement {
   if (message.role === 'user') {
     return h(
       'div',
@@ -47,7 +48,7 @@ function messageEl(message: ChatMessage): HTMLElement {
         message.author ? providerChip(message.author.provider) : null,
         h('span', { class: 'rp-muted', text: message.at }),
       ),
-      h('div', { class: 'rp-bubble' }, h('span', { text: message.text })),
+      h('div', { class: 'rp-bubble' }, h('div', { class: 'ui-md' }, renderMarkdown(message.text))),
     ),
   );
 }
