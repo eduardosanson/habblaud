@@ -214,5 +214,5 @@ export async function converse(
   }
   if (sent.error === 'unavailable') return fail(409, 'unavailable', sent.reason, { route: routeSummary(route) });
   if (sent.error === 'too-many') return fail(429, 'too_many', tr('há mensagens demais esperando este agente'), undefined, true);
-  return fail(404, 'no_session', tr('o agente saiu do escritório'));
+  return fail(404, 'no_session', tr('a sessão do agente já encerrou; veja “O que foi entregue” no item ou reabra a sessão'));
 }

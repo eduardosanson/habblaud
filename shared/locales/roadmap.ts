@@ -3,6 +3,10 @@
 // vocabulário de planejamento (fase, item, estimativa, bloqueio, recibo de ação).
 
 export const ROADMAP_EN: Readonly<Record<string, string>> = {
+  "Revisão feita por agentes: você não precisa aprovar nem devolver.": "Reviewed by agents: you do not need to approve or return it.",
+  "Em revisão por agentes; nada para você decidir.": "Under review by agents; nothing for you to decide.",
+  "A pergunta não foi entregue: {0}. O que o agente fez está em “O que foi entregue”, neste item; para conversar, reabra a sessão.": "The question was not delivered: {0}. What the agent did is under “What was delivered” on this item; reopen the session to talk.",
+  "a sessão do agente já encerrou; veja “O que foi entregue” no item ou reabra a sessão": "the agent session has ended; see “What was delivered” on the item or reopen the session",
   "O servidor do Habblaud não respondeu.": "The Habblaud server did not respond.",
   "O token do Habblaud não foi aceito ({0}). Confira HABBLAUD_ROADMAP_TOKEN no servidor.": "The Habblaud token was not accepted ({0}). Check HABBLAUD_ROADMAP_TOKEN on the server.",
   "Pipeline": "Pipeline",
@@ -58,7 +62,6 @@ export const ROADMAP_EN: Readonly<Record<string, string>> = {
   "Abrir roadmap em fases": "Open roadmap by phases",
   "Terminado pelo agente; espera a sua revisão.": "Finished by the agent; waiting for your review.",
   "Perguntar ao agente": "Ask the agent",
-  "A entrega não foi confirmada: {0}. Se a sessão responder, a resposta aparece aqui.": "Delivery was not confirmed: {0}. If the session answers, the reply shows up here.",
   "sem motivo informado": "no reason given",
   "Pronto para perguntar": "Ready to ask",
   "Agente": "Agent",
@@ -396,6 +399,10 @@ export const ROADMAP_EN: Readonly<Record<string, string>> = {
 };
 
 export const ROADMAP_ES: Readonly<Record<string, string>> = {
+  "Revisão feita por agentes: você não precisa aprovar nem devolver.": "Revisión hecha por agentes: no necesitas aprobar ni devolver.",
+  "Em revisão por agentes; nada para você decidir.": "En revisión por agentes; nada que decidir.",
+  "A pergunta não foi entregue: {0}. O que o agente fez está em “O que foi entregue”, neste item; para conversar, reabra a sessão.": "La pregunta no se entregó: {0}. Lo que hizo el agente está en “Qué se entregó”, en este elemento; reabre la sesión para conversar.",
+  "a sessão do agente já encerrou; veja “O que foi entregue” no item ou reabra a sessão": "la sesión del agente ya terminó; mira “Qué se entregó” en el elemento o reabre la sesión",
   "O servidor do Habblaud não respondeu.": "El servidor de Habblaud no respondió.",
   "O token do Habblaud não foi aceito ({0}). Confira HABBLAUD_ROADMAP_TOKEN no servidor.": "El token de Habblaud no fue aceptado ({0}). Revisa HABBLAUD_ROADMAP_TOKEN en el servidor.",
   "Pipeline": "Pipeline",
@@ -451,7 +458,6 @@ export const ROADMAP_ES: Readonly<Record<string, string>> = {
   "Abrir roadmap em fases": "Abrir roadmap por fases",
   "Terminado pelo agente; espera a sua revisão.": "Terminado por el agente; espera tu revisión.",
   "Perguntar ao agente": "Preguntar al agente",
-  "A entrega não foi confirmada: {0}. Se a sessão responder, a resposta aparece aqui.": "La entrega no se confirmó: {0}. Si la sesión responde, la respuesta aparece aquí.",
   "sem motivo informado": "sin motivo informado",
   "Pronto para perguntar": "Listo para preguntar",
   "Agente": "Agente",
@@ -789,6 +795,10 @@ export const ROADMAP_ES: Readonly<Record<string, string>> = {
 };
 
 export const ROADMAP_FR: Readonly<Record<string, string>> = {
+  "Revisão feita por agentes: você não precisa aprovar nem devolver.": "Revue faite par des agents : vous n’avez ni à approuver ni à renvoyer.",
+  "Em revisão por agentes; nada para você decidir.": "En revue par des agents ; rien à décider.",
+  "A pergunta não foi entregue: {0}. O que o agente fez está em “O que foi entregue”, neste item; para conversar, reabra a sessão.": "La question n’a pas été remise : {0}. Ce que l’agent a fait se trouve dans « Ce qui a été livré » sur cet élément ; rouvrez la session pour discuter.",
+  "a sessão do agente já encerrou; veja “O que foi entregue” no item ou reabra a sessão": "la session de l’agent est terminée ; voir « Ce qui a été livré » sur l’élément ou rouvrir la session",
   "O servidor do Habblaud não respondeu.": "Le serveur Habblaud n'a pas répondu.",
   "O token do Habblaud não foi aceito ({0}). Confira HABBLAUD_ROADMAP_TOKEN no servidor.": "Le jeton Habblaud n'a pas été accepté ({0}). Vérifiez HABBLAUD_ROADMAP_TOKEN sur le serveur.",
   "Pipeline": "Pipeline",
@@ -844,7 +854,6 @@ export const ROADMAP_FR: Readonly<Record<string, string>> = {
   "Abrir roadmap em fases": "Ouvrir la roadmap par phases",
   "Terminado pelo agente; espera a sua revisão.": "Terminé par l'agent ; en attente de votre revue.",
   "Perguntar ao agente": "Demander à l'agent",
-  "A entrega não foi confirmada: {0}. Se a sessão responder, a resposta aparece aqui.": "La livraison n'a pas été confirmée : {0}. Si la session répond, la réponse apparaît ici.",
   "sem motivo informado": "aucun motif indiqué",
   "Pronto para perguntar": "Prêt à poser une question",
   "Agente": "Agent",
