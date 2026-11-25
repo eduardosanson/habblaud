@@ -82,7 +82,8 @@ interface StartOpts {
   sendResult?: SendResult;
   withConverse?: boolean;
   local?: boolean;
-  agents?: Array<{ id: string; provider: 'codex' | 'claude'; sessionId: string }>;
+  /** `provider` ausente quer dizer Claude Code, como no escritório de verdade. */
+  agents?: Array<{ id: string; provider?: 'codex' | 'claude'; sessionId: string }>;
 }
 
 async function start(pipelineUrl: string, opts: StartOpts = {}): Promise<Harness> {
@@ -293,5 +294,23 @@ describe('GET /api/roadmap/sessions', () => {
   it('sem a conversa configurada, a rota não existe', async () => {
     const { base } = await start(await fakePipeline({ item: [exec()] }), { withConverse: false });
     expect((await sessions(base)).status).toBe(404);
+  });
+});
+
+describe('agente do Claude Code no escritório (provider ausente quer dizer claude)', () => {
+  const CLAUDE_AGENT = [{ id: '.claude:123', sessionId: SID_B }];
+  const CLAUDE_EXECUTION = [exec({ provider: 'claude-code', workerSessionId: SID_B, profile: 'claude-code-sonnet-5-5' })];
+
+  it('lista a sessão como viva e acessível', async () => {
+    const { base } = await start(await fakePipeline({ item: CLAUDE_EXECUTION }), { agents: CLAUDE_AGENT });
+    const body = (await (await sessions(base)).json()) as { options: Array<Record<string, unknown>> };
+    expect(body.options).toMatchObject([{ provider: 'claude', sessionId: SID_B, live: true, agentId: '.claude:123' }]);
+  });
+
+  it('entrega a pergunta nela', async () => {
+    const { base, sent } = await start(await fakePipeline({ item: CLAUDE_EXECUTION }), { agents: CLAUDE_AGENT });
+    const response = await post(base, { roadmapId: 'r', itemId: 'i', text: 'oi', session: { provider: 'claude', sessionId: SID_B } });
+    expect(response.status).toBe(202);
+    expect((sent[0] as { agentId: string }).agentId).toBe('.claude:123');
   });
 });

@@ -87,7 +87,8 @@ function liveAgentsOf(deps: ConverseDeps): LiveAgent[] {
   return deps.office
     .list()
     .filter((agent) => agent.kind === 'main')
-    .map((agent) => ({ id: agent.id, provider: agent.provider, sessionId: agent.sessionId, canMessage: deps.messages.canMessage(agent.id) }));
+    // `provider` ausente quer dizer Claude Code (shared/types.ts): o roteador compara com o `Provider` explícito.
+    .map((agent) => ({ id: agent.id, provider: agent.provider ?? 'claude', sessionId: agent.sessionId, canMessage: deps.messages.canMessage(agent.id) }));
 }
 
 /**
