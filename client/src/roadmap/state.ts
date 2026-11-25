@@ -91,11 +91,16 @@ export interface AppState {
   roadmapMenuOpen: boolean;
   conversation: ConversationUiState;
   toast: ToastState | null;
+  /** Revisão em curso: o motivo digitado por item e o item cuja decisão está sendo enviada. */
+  review: { notes: Record<string, string>; sending: string | null };
   source: SourceState | null;
   roadmapStream: StreamStatus;
 }
 
 export interface AppActions {
+  setReviewNote(itemId: string, note: string): void;
+  /** Aprova ou devolve o item em revisão. */
+  decideReview(planId: string, decision: 'approve' | 'return'): void;
   retry(): void;
   setVariant(variant: Variant): void;
   togglePhase(id: string): void;

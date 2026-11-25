@@ -408,6 +408,8 @@ const roadmap = createRoadmapHandler({
   extraCaPath: () => resolveRoadmapEnv().NODE_EXTRA_CA_CERTS?.trim(),
   // A conversa do roadmap vai para a sessão real do agente, pela fila de mensagens do escritório; sem ela, a rota não existe.
   converse: messages ? { office: { list: () => office.list() }, messages } : undefined,
+  // Aprovar ou devolver uma revisão: só a própria página, com a mesma trava do terminal.
+  review: { problem: ptyRequestProblem },
   // Reabrir a sessão finalizada usa o terminal interativo e a mesma trava dele.
   reopen: messages
     ? {

@@ -2,7 +2,8 @@
 //
 // O navegador chama `/api/roadmap/*` na mesma origem. Este módulo injeta o token do
 // Habblaud, repassa o SSE e limita as rotas ao contrato do roadmap. Nenhuma ferramenta
-// de mutação passa por aqui: quem move o roadmap é o agente, dentro do pipeline.
+// de mutação passa por aqui: quem move o roadmap é o agente, dentro do pipeline. A única
+// escrita é a decisão da pessoa sobre uma revisão (review.ts).
 import http from 'node:http';
 import https from 'node:https';
 import tls from 'node:tls';
@@ -13,6 +14,7 @@ import { sendJson } from '../http/app';
 import type { RoadmapConfig } from './config';
 import { converse, sessionOptions, type ConverseDeps, type ConverseOutcome, type PipelineGet } from './converse';
 import { reopen, type ReopenDeps } from './reopen';
+import { review, type PipelinePost } from './review';
 
 export type { ConverseDeps };
 
@@ -50,6 +52,8 @@ export interface RoadmapProxyOptions {
   converse?: ConverseDeps;
   /** Reabrir sessão finalizada (POST /api/roadmap/reopen). `problem` é a trava do terminal: motivo da recusa ou null. */
   reopen?: { deps: ReopenDeps; problem(req: IncomingMessage): string | null };
+  /** Decidir uma revisão (POST /api/roadmap/review), com a mesma trava de origem local. */
+  review?: { problem(req: IncomingMessage): string | null };
 }
 
 function errorBody(code: string, message: string, retryable = false): Record<string, unknown> {
@@ -133,11 +137,19 @@ async function upstreamJson(
   targetPath: string,
   search: string,
   ca?: string[],
+  json?: unknown,
 ): Promise<{ status: number; body: Buffer }> {
   const target = new URL(`${targetPath}${search}`, baseUrl);
   const secure = target.protocol === 'https:';
   return new Promise((resolve, reject) => {
-    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Cache-Control': 'no-store' };
+    const payload = json === undefined ? undefined : Buffer.from(JSON.stringify(json));
+    const method = payload ? 'POST' : 'GET';
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Cache-Control': 'no-store',
+      ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : {}),
+    };
     const onResponse = (res: IncomingMessage) => {
       const chunks: Buffer[] = [];
       let size = 0;
@@ -154,11 +166,11 @@ async function upstreamJson(
       res.on('error', reject);
     };
     const req = secure
-      ? https.request(target, { method: 'GET', headers, ...(ca ? { ca } : {}) }, onResponse)
-      : http.request(target, { method: 'GET', headers }, onResponse);
+      ? https.request(target, { method, headers, ...(ca ? { ca } : {}) }, onResponse)
+      : http.request(target, { method, headers }, onResponse);
     req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error('timeout')));
     req.on('error', reject);
-    req.end();
+    req.end(payload);
   });
 }
 
@@ -258,6 +270,21 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       } else {
         const get = pipelineGetter(config, readCaPath());
         void handlePost(req, res, (raw) => reopen(target.deps, get, (id) => allowedId(config, id), raw));
+      }
+      return;
+    }
+    if (url.pathname === `${PREFIX}/review`) {
+      const target = opts.review;
+      const problem = target && method === 'POST' ? target.problem(req) : null;
+      if (!target || method !== 'POST') {
+        req.resume();
+        sendJson(res, target ? 405 : 404, errorBody(target ? 'method_not_allowed' : 'not_found', target ? tr('método não permitido') : tr('rota de roadmap desconhecida')));
+      } else if (problem) {
+        req.resume();
+        sendJson(res, 403, errorBody('local_only', problem));
+      } else {
+        const post = pipelinePoster(config, readCaPath());
+        void handlePost(req, res, (raw) => review(post, (id) => allowedId(config, id), raw));
       }
       return;
     }
@@ -379,16 +406,26 @@ async function handleSessions(deps: ConverseDeps, url: URL, res: ServerResponse,
 }
 
 /** GET no pipeline com o token do servidor; o corpo vira JSON (ou `null` se não for). */
+function pipelinePoster(config: RoadmapConfig, caPath: string | undefined): PipelinePost {
+  const ca = extraCaOption(caPath);
+  return async (path, body) => {
+    const result = await upstreamJson(config.url!, config.token!, path, '', ca, body);
+    return { status: result.status, json: parseBody(result.body) };
+  };
+}
+
+function parseBody(body: Buffer): unknown {
+  try {
+    return body.length ? JSON.parse(body.toString('utf8')) : null;
+  } catch {
+    return null;
+  }
+}
+
 function pipelineGetter(config: RoadmapConfig, caPath: string | undefined): PipelineGet {
   const ca = extraCaOption(caPath);
   return async (path) => {
     const result = await upstreamJson(config.url!, config.token!, path, '', ca);
-    let json: unknown = null;
-    try {
-      json = result.body.length ? JSON.parse(result.body.toString('utf8')) : null;
-    } catch {
-      json = null;
-    }
-    return { status: result.status, json };
+    return { status: result.status, json: parseBody(result.body) };
   };
 }

@@ -28,6 +28,9 @@ do meio (0.**3**.0).
 
 ### Adicionado (roadmap)
 
+- **Aprovar ou devolver pelo Habblaud.** O item em revisão ganhou os botões **Aprovar** e **Devolver** (com
+  comentário). É a única escrita que o Habblaud faz no roadmap, só a partir da própria página, e exige o Hermes
+  Pipeline com a rota de revisão.
 - **Reabrir a sessão que fez o trabalho.** Na gaveta do roadmap, uma sessão fechada do Claude Code ganhou o botão
   **Reabrir sessão**: o Habblaud a retoma num terminal dele (`claude --resume`) e a pergunta vai para quem trabalhou no
   item. Precisa de `HABBLAUD_PTY=1`; a pasta vem da conversa gravada no computador, e sessão ainda aberta nunca é

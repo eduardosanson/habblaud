@@ -1678,7 +1678,7 @@ function renderPlanDetail(state: AppState, actions: AppActions, roadmap: Roadmap
     h(
       'div',
       { class: 'rp-detail__body' },
-      renderDelivery(plan),
+      renderDelivery(plan, state, actions),
       h('section', { class: 'rp-detail__section' }, h('h3', { class: 'rp-h3', text: tr('Objetivo') }), h('p', { class: 'rp-body', text: plan.objective || tr('O item não descreve o objetivo.') })),
       renderEstimateCard(plan),
       plan.status === 'blocked' ? renderBlockCallout(plan, actions) : null,
@@ -1725,7 +1725,7 @@ function renderPlanDetail(state: AppState, actions: AppActions, roadmap: Roadmap
 }
 
 /** Quem revisa só tem o que está no roadmap: a entrega vem antes de tudo, e a falta dela é dita. */
-function renderDelivery(plan: Plan): HTMLElement | null {
+function renderDelivery(plan: Plan, state: AppState, actions: AppActions): HTMLElement | null {
   const waiting = plan.status === 'review';
   if (!plan.delivery && !waiting) return null;
   const { delivery } = plan;
@@ -1738,9 +1738,31 @@ function renderDelivery(plan: Plan): HTMLElement | null {
       : h('p', { class: 'rp-body', text: tr('O agente não escreveu o que entregou. Pergunte à sessão antes de decidir.') }),
     delivery ? renderMarkdown(delivery.summary) : null,
     delivery?.changedFiles.length ? h('p', { class: 'rp-small', text: tr('Arquivos: {0}', [delivery.changedFiles.join(', ')]) }) : null,
-    waiting
-      ? h('p', { class: 'rp-footnote' }, icon('info'), h('span', { text: tr('Para decidir: confira os critérios abaixo e peça ao agente, pela conversa, para concluir ou ajustar. O Habblaud só lê o roadmap.') }))
-      : null,
+    waiting ? renderDecision(plan, state, actions) : null,
+  );
+}
+
+function renderDecision(plan: Plan, state: AppState, actions: AppActions): HTMLElement {
+  const sending = state.review.sending === plan.apiId;
+  const note = h('textarea', {
+    class: 'rp-decision__note',
+    id: 'rp-decision-note',
+    attrs: { rows: 3, maxlength: 4000, 'aria-label': tr('Comentário da decisão'), placeholder: tr('Comentário (obrigatório para devolver)') },
+    on: { input: (event) => actions.setReviewNote(plan.apiId, (event.target as HTMLTextAreaElement).value) },
+  }) as HTMLTextAreaElement;
+  note.value = state.review.notes[plan.apiId] ?? '';
+  const button = (decision: 'approve' | 'return', label: string, extra: string): HTMLElement =>
+    h(
+      'button',
+      { class: `rp-btn${extra}`, id: `rp-decision-${decision}`, attrs: { type: 'button', disabled: sending }, on: { click: () => actions.decideReview(plan.id, decision) } },
+      h('span', { text: label }),
+    );
+  return h(
+    'div',
+    { class: 'rp-decision' },
+    h('p', { class: 'rp-footnote' }, icon('info'), h('span', { text: tr('Aprovar conclui o item e marca os critérios como atendidos. Devolver volta o item para andamento com o seu comentário.') })),
+    note,
+    h('div', { class: 'rp-decision__actions' }, button('approve', tr('Aprovar'), ' rp-btn--primary'), button('return', tr('Devolver'), '')),
   );
 }
 
