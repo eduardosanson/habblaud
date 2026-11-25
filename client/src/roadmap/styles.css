@@ -2988,6 +2988,137 @@ img {
   white-space: pre-wrap;
 }
 
+/* Markdown das respostas (ui/markdown.ts). A página não carrega o CSS do escritório. */
+.rp-bubble .ui-md {
+  white-space: normal;
+}
+
+.ui-md > * + * {
+  margin-top: 8px;
+}
+
+.ui-md p,
+.ui-md ul,
+.ui-md ol {
+  margin-bottom: 0;
+}
+
+.ui-md p:first-child,
+.ui-md ul,
+.ui-md ol {
+  margin-top: 0;
+}
+
+.ui-md > * + ul,
+.ui-md > * + ol {
+  margin-top: 8px;
+}
+
+.ui-md__p,
+.ui-md__h,
+.ui-md__item,
+.ui-md__quote {
+  white-space: pre-wrap;
+}
+
+.ui-md__h,
+.ui-md strong {
+  font-weight: 700;
+}
+
+.ui-md__code,
+.ui-md__pre,
+.ui-md__table {
+  font-family: var(--font-mono);
+}
+
+.ui-md__code {
+  color: var(--violet);
+}
+
+.ui-md__link {
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.ui-md__block {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg-deep);
+}
+
+.ui-md__lang {
+  position: absolute;
+  top: 3px;
+  right: 8px;
+  color: var(--faint);
+  font-size: 0.85em;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Código e tabelas rolam por dentro do balão: a página nunca ganha rolagem horizontal. */
+.ui-md__pre,
+.ui-md__table {
+  max-width: 100%;
+  margin-bottom: 0;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  scrollbar-width: thin;
+}
+
+.ui-md__pre {
+  margin-top: 0;
+  padding: 7px 10px;
+}
+
+.ui-md__lang + .ui-md__pre {
+  padding-top: 18px;
+}
+
+.ui-md__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.ui-md__li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 1ch;
+  padding-left: calc(var(--d, 0) * 2ch);
+}
+
+.ui-md__mark {
+  min-width: 1ch;
+  color: var(--faint);
+}
+
+.ui-md__item {
+  min-width: 0;
+}
+
+.ui-md__quote {
+  margin-inline: 0;
+  margin-bottom: 0;
+  padding-left: 1.2ch;
+  border-left: 2px solid var(--line-strong);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.ui-md__rule {
+  height: 1px;
+  border: 0;
+  background: var(--line-strong);
+}
+
 .rp-msg--user .rp-bubble {
   border-color: rgba(124, 200, 255, 0.22);
   border-top-left-radius: 8px;
