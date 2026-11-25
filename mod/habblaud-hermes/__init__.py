@@ -267,7 +267,17 @@ def _project(kw: Dict[str, Any]) -> str:
         value = kw.get(key)
         if isinstance(value, str) and value.strip():
             return os.path.abspath(os.path.expanduser(os.path.expandvars(value.strip())))
-    return _profile_cwd() or os.getcwd()
+    ws = str(os.environ.get("HERMES_KANBAN_WORKSPACE", "")).strip()
+    if ws:
+        return os.path.abspath(os.path.expanduser(os.path.expandvars(ws)))
+    prof_cwd = _profile_cwd()
+    cur_cwd = os.path.abspath(os.getcwd())
+    if prof_cwd:
+        prefix = prof_cwd.rstrip(os.sep) + os.sep
+        if cur_cwd != prof_cwd and cur_cwd.startswith(prefix):
+            return cur_cwd
+        return prof_cwd
+    return cur_cwd
 
 
 def _short(value: Any, limit: int = PREVIEW_MAX) -> str:

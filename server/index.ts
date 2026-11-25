@@ -63,6 +63,7 @@ import { FileFetcher } from './deliveries/fetcher';
 import { WorldClient } from './world/client';
 import { createWorldRoutes } from './world/http';
 import { createRoadmapHandler } from './roadmap/proxy';
+import { WorktreeRoadmapResolver } from './roadmap/worktree';
 import { WorldService } from './world/service';
 import { WorldSettingsStore } from './world/settings';
 import { OwnerSocial } from './world/social';
@@ -127,9 +128,19 @@ const accounts = new AccountsService({
   usageDir: config.usageDir,
   onChange: () => late.office?.markDirty(),
 });
+const resolveRoadmapEnv = (): NodeJS.ProcessEnv => mergeEnvWithDotEnv(initialEnv, readDotEnv(dotEnvPath));
+const currentRoadmapConfig = (): RoadmapConfig => parseRoadmapConfig(resolveRoadmapEnv(), { dataDir: config.dataDir });
+
+const worktreeRoadmaps = new WorktreeRoadmapResolver({
+  config: currentRoadmapConfig,
+  extraCaPath: () => resolveRoadmapEnv().NODE_EXTRA_CA_CERTS?.trim(),
+  onTitleChange: () => late.office?.syncRooms(),
+});
+
 const office = new Office({
   names,
   roomAlias: (path) => roomAliases.get(path),
+  resolveRoom: (cwd, sessionId) => worktreeRoadmaps.resolve(cwd, sessionId),
   version: config.version,
   // No modo dev o Vite serve o cliente direto do código-fonte: não há build para comparar.
   build: config.dev ? undefined : createBuildReader(config.rootDir),
@@ -368,7 +379,7 @@ const ptys = spawnPty
       accounts: () => accounts.entries().map((a) => ({ id: a.id, dir: a.dir, isDefault: isDefaultDir(a.dir, config.home) })),
       agent: (id) => {
         const a = office.get(id);
-        return a && { id: a.id, kind: a.kind, account: a.account, sessionId: a.sessionId, cwd: office.roomPath(a.roomId) };
+        return a && { id: a.id, kind: a.kind, account: a.account, sessionId: a.sessionId, cwd: office.agentCwd(a.id) ?? office.roomPath(a.roomId) };
       },
       onChange: () => office.markDirty(),
       createScreen: ptyScreen,
@@ -399,9 +410,6 @@ const ticker = setInterval(() => {
   }
 }, 250);
 
-const resolveRoadmapEnv = (): NodeJS.ProcessEnv => mergeEnvWithDotEnv(initialEnv, readDotEnv(dotEnvPath));
-const currentRoadmapConfig = (): RoadmapConfig => parseRoadmapConfig(resolveRoadmapEnv(), { dataDir: config.dataDir });
-
 const roadmap = createRoadmapHandler({
   config: currentRoadmapConfig,
   isLocal: (req) => !isRemoteRequest(req) && isLoopbackHost(req.headers.host),
@@ -430,9 +438,9 @@ const roadmap = createRoadmapHandler({
 
 const api = createApiHandler({
   renameRoom: (id, name) => {
-    const path = office.roomPath(id);
-    if (!path) return undefined;
-    roomAliases.set(path, name);
+    const key = id.startsWith('roadmap:') ? id : office.roomPath(id);
+    if (!key) return undefined;
+    roomAliases.set(key, name);
     office.refreshRoomNames();
     return office.roomName(id);
   },

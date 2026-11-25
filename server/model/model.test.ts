@@ -796,4 +796,54 @@ describe('Office: personagem do projeto', () => {
     office.switchSession('acc:2', 's2b');
     expect(names.character('/p/api')?.owner).toBe('s2b');
   });
+
+  it('agrupa agentes de worktrees diferentes na mesma sala do roadmap pelo título e acompanha troca de roadmap', () => {
+    let clock = 1_000_000;
+    const roadmapByCwd = new Map<string, { id: string; name: string; path?: string }>([
+      ['/p/atlas-wt-1', { id: 'roadmap:atlas-ondas', name: 'Atlas Store — ondas', path: '/p/atlas-wt-1' }],
+      ['/p/atlas-wt-2', { id: 'roadmap:atlas-ondas', name: 'Atlas Store — ondas', path: '/p/atlas-wt-2' }],
+    ]);
+    const office = new Office({
+      names: new NameStore(null),
+      version: 't',
+      startedAt: clock,
+      accounts: (s) => [{ id: 'acc', short: 'C', name: 'Conta C', color: '#f08a3c', configDir: '/x', sessions: s.get('acc') ?? 0, usageStatus: 'disabled' }],
+      sources: () => [],
+      accountName: () => 'Conta C',
+      resolveRoom: (cwd) => roadmapByCwd.get(cwd),
+      now: () => clock,
+    });
+
+    office.addMain(main('acc:1', 's1', '/p/atlas-wt-1', clock));
+    office.addMain(main('acc:2', 's2', '/p/atlas-wt-2', clock));
+    office.addSub({ id: 'acc:sub', parentId: 'acc:1', sessionId: 's-sub', role: 'sub', background: true, startedAt: clock });
+
+    let snap = office.commit().snapshot;
+    expect(snap.rooms).toHaveLength(1);
+    expect(snap.rooms[0]).toMatchObject({ id: 'roadmap:atlas-ondas', name: 'Atlas Store — ondas' });
+    expect(snap.agents.map((a) => a.roomId)).toEqual(['roadmap:atlas-ondas', 'roadmap:atlas-ondas', 'roadmap:atlas-ondas']);
+    expect(office.agentCwd('acc:1')).toBe('/p/atlas-wt-1');
+    expect(office.agentCwd('acc:2')).toBe('/p/atlas-wt-2');
+
+    // Troca dinâmica do roadmap na worktree do agente 1
+    roadmapByCwd.set('/p/atlas-wt-1', { id: 'roadmap:outro', name: 'Outro Roadmap', path: '/p/atlas-wt-1' });
+    clock += 2_500;
+    office.tick();
+    snap = office.commit().snapshot;
+    expect(snap.rooms.map((r) => [r.id, r.name])).toEqual([
+      ['roadmap:atlas-ondas', 'Atlas Store — ondas'],
+      ['roadmap:outro', 'Outro Roadmap'],
+    ]);
+    expect(office.get('acc:1')?.roomId).toBe('roadmap:outro');
+    expect(office.get('acc:sub')?.roomId).toBe('roadmap:outro');
+    expect(office.get('acc:2')?.roomId).toBe('roadmap:atlas-ondas');
+
+    // Agente 2 troca também -> sala antiga é removida
+    roadmapByCwd.set('/p/atlas-wt-2', { id: 'roadmap:outro', name: 'Outro Roadmap', path: '/p/atlas-wt-2' });
+    clock += 2_500;
+    office.tick();
+    snap = office.commit().snapshot;
+    expect(snap.rooms).toHaveLength(1);
+    expect(snap.rooms[0]).toMatchObject({ id: 'roadmap:outro', name: 'Outro Roadmap' });
+  });
 });

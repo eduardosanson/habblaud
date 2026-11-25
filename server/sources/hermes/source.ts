@@ -244,6 +244,11 @@ export class HermesSource implements AgentSource {
       if (existing) {
         existing.lastSeenAt = Math.max(existing.lastSeenAt, at);
         existing.platform = str(ev.platform) ?? existing.platform;
+        const nextProject = str(ev.project) ?? str(ev.cwd) ?? str(ev.directory);
+        if (nextProject && nextProject !== existing.cwd) {
+          existing.cwd = nextProject;
+          this.opts.office.setCwd(existing.key, nextProject);
+        }
         this.applySummary(existing);
         return true;
       }
@@ -370,6 +375,11 @@ export class HermesSource implements AgentSource {
       existing.lastSeenAt = Math.max(existing.lastSeenAt, at);
       existing.platform = str(ev.platform) ?? existing.platform;
       existing.model = str(ev.model) ?? existing.model;
+      const nextProject = str(ev.project) ?? str(ev.cwd) ?? str(ev.directory);
+      if (nextProject && nextProject !== existing.cwd) {
+        existing.cwd = nextProject;
+        this.opts.office.setCwd(existing.key, nextProject);
+      }
       this.applySummary(existing);
       return true;
     }
