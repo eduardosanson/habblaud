@@ -11,7 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tr } from '../../shared/i18n';
 import { sendJson } from '../http/app';
 import type { RoadmapConfig } from './config';
-import { converse, type ConverseDeps } from './converse';
+import { converse, sessionOptions, type ConverseDeps, type PipelineGet } from './converse';
 
 export type { ConverseDeps };
 
@@ -241,6 +241,15 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       void handleConverse(opts.converse, req, res, config, readCaPath());
       return;
     }
+    if (url.pathname === `${PREFIX}/sessions`) {
+      if (!opts.converse || method !== 'GET') {
+        req.resume();
+        sendJson(res, opts.converse ? 405 : 404, errorBody(opts.converse ? 'method_not_allowed' : 'not_found', opts.converse ? tr('método não permitido') : tr('rota de roadmap desconhecida')));
+        return;
+      }
+      void handleSessions(opts.converse, url, res, config, readCaPath());
+      return;
+    }
     if (method !== 'GET') {
       req.resume();
       res.setHeader('Allow', 'GET');
@@ -343,8 +352,21 @@ async function handleConverse(
     sendJson(res, tooLarge ? 413 : 400, errorBody(tooLarge ? 'too_large' : 'bad_request', tooLarge ? tr('corpo grande demais') : tr('JSON inválido')));
     return;
   }
+  const outcome = await converse(deps, pipelineGetter(config, caPath), (id) => allowedId(config, id), raw);
+  sendJson(res, outcome.status, outcome.body);
+}
+
+/** GET /api/roadmap/sessions?roadmapId=&itemId=: as sessões que o seletor da gaveta mostra. */
+async function handleSessions(deps: ConverseDeps, url: URL, res: ServerResponse, config: RoadmapConfig, caPath: string | undefined): Promise<void> {
+  const query = { roadmapId: url.searchParams.get('roadmapId') ?? undefined, itemId: url.searchParams.get('itemId') ?? undefined };
+  const outcome = await sessionOptions(deps, pipelineGetter(config, caPath), (id) => allowedId(config, id), query);
+  sendJson(res, outcome.status, outcome.body);
+}
+
+/** GET no pipeline com o token do servidor; o corpo vira JSON (ou `null` se não for). */
+function pipelineGetter(config: RoadmapConfig, caPath: string | undefined): PipelineGet {
   const ca = extraCaOption(caPath);
-  const get = async (path: string) => {
+  return async (path) => {
     const result = await upstreamJson(config.url!, config.token!, path, '', ca);
     let json: unknown = null;
     try {
@@ -354,6 +376,4 @@ async function handleConverse(
     }
     return { status: result.status, json };
   };
-  const outcome = await converse(deps, get, (id) => allowedId(config, id), raw);
-  sendJson(res, outcome.status, outcome.body);
 }

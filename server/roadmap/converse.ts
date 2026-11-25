@@ -1,16 +1,20 @@
 // Conversa do roadmap pelo escritório: a pergunta vai para a sessão REAL do agente que trabalhou no item, não para um
-// agente do pipeline. O pipeline só registra quem fez o quê (participants/executions); aqui o Habblaud escolhe a
-// sessão por regra fixa (router.ts) e entrega pela fila de mensagens que já existe (messages/registry.ts).
+// agente do pipeline. O pipeline só registra as execuções (workerSessionId + provider + cwd); aqui o Habblaud monta a
+// lista de sessões, cruza com os agentes vivos (router.ts) e entrega pela fila de mensagens que já existe
+// (messages/registry.ts).
 //
-// Sessão fechada nunca é reaberta aqui nem recebe resposta inventada: devolve 409 `session_closed` com o motivo e se
-// há como reabri-la. O texto da pergunta vai à sessão como foi digitado, depois de uma linha que diz de onde veio.
+// A pessoa pode escolher a sessão, mas só entre as que ESTE servidor listou: o navegador nunca aponta um destino
+// por conta própria. Sessão fechada nunca é reaberta aqui nem recebe resposta inventada: devolve 409 `session_closed`.
+// O texto da pergunta vai à sessão como foi digitado, depois de uma linha que diz de onde veio.
 import { tr } from '../../shared/i18n';
 import type { Provider } from '../../shared/types';
 import type { SendResult } from '../messages/registry';
-import { resolveTarget, type LiveAgent, type RouteResult, type RouterExecution, type RouterParticipant } from './router';
+import { listTargets, type LiveAgent, type RouteResult, type RouterExecution } from './router';
 
 const ID_MAX = 200;
 const TEXT_MAX = 19_000;
+/** Máximo de execuções do roadmap inteiro que o pipeline entrega (limite dele). */
+const ROADMAP_EXECUTIONS_LIMIT = 200;
 
 export interface ConverseDeps {
   office: { list(): ReadonlyArray<{ id: string; provider?: Provider; sessionId: string; kind?: string }> };
@@ -23,6 +27,26 @@ export type PipelineGet = (path: string) => Promise<{ status: number; json: unkn
 export interface ConverseOutcome {
   status: number;
   body: unknown;
+}
+
+/** Uma sessão que trabalhou no item (ou no roadmap), como o navegador a vê. Nunca traz o `cwd`. */
+export interface SessionOption {
+  provider: Provider;
+  sessionId: string;
+  /** Presente quando a sessão está viva no escritório e aceita mensagem. */
+  agentId?: string;
+  live: boolean;
+  /** Há comando verificado para reabri-la (fora do escopo desta tela; informativo). */
+  resumable: boolean;
+  profile?: string;
+  model?: string;
+  lastAt: string;
+  scope: 'item' | 'roadmap';
+}
+
+export interface SessionOptions {
+  options: SessionOption[];
+  suggested: { provider: Provider; sessionId: string } | null;
 }
 
 function fail(status: number, code: string, message: string, details?: Record<string, unknown>, retryable = false): ConverseOutcome {
@@ -40,6 +64,14 @@ function arrayAt(json: unknown, key: string): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+/** Repassa o erro do pipeline (status e envelope) quando ele recusa; sem envelope legível, monta um. */
+function pipelineFail(status: number, json: unknown): ConverseOutcome {
+  const error = json && typeof json === 'object' ? (json as { error?: { code?: unknown; message?: unknown } }).error : undefined;
+  const code = typeof error?.code === 'string' ? error.code : 'pipeline_error';
+  const message = typeof error?.message === 'string' ? error.message : tr('o Hermes Pipeline respondeu {0}', [status]);
+  return fail(status, code, message, undefined, status >= 500);
+}
+
 function routeSummary(route: RouteResult): Record<string, unknown> {
   const { candidate } = route;
   return {
@@ -49,6 +81,71 @@ function routeSummary(route: RouteResult): Record<string, unknown> {
     ...(candidate.profile ? { profile: candidate.profile } : {}),
     ...(candidate.role ? { role: candidate.role } : {}),
   };
+}
+
+function liveAgentsOf(deps: ConverseDeps): LiveAgent[] {
+  return deps.office
+    .list()
+    .filter((agent) => agent.kind === 'main')
+    .map((agent) => ({ id: agent.id, provider: agent.provider, sessionId: agent.sessionId, canMessage: deps.messages.canMessage(agent.id) }));
+}
+
+/**
+ * Sessões que trabalharam no item (as do roadmap, se o item não tem nenhuma), vivas primeiro. Um 404 do pipeline
+ * (item ou roadmap desconhecido) vale lista vazia; qualquer outra recusa dele é erro.
+ */
+async function targetsFor(deps: ConverseDeps, get: PipelineGet, roadmapId: string, itemId: string): Promise<{ targets: RouteResult[] } | { failure: ConverseOutcome }> {
+  const liveAgents = liveAgentsOf(deps);
+  const roadmap = `/api/roadmaps/${encodeURIComponent(roadmapId)}`;
+  try {
+    const item = await get(`${roadmap}/items/${encodeURIComponent(itemId)}/executions`);
+    if (item.status !== 200 && item.status !== 404) return { failure: pipelineFail(item.status, item.json) };
+    const executions = item.status === 200 ? (arrayAt(item.json, 'executions') as RouterExecution[]) : [];
+    const itemOnly = listTargets({ executions, liveAgents });
+    if (itemOnly.length > 0) return { targets: itemOnly };
+    const wide = await get(`${roadmap}/executions?limit=${ROADMAP_EXECUTIONS_LIMIT}`);
+    if (wide.status !== 200 && wide.status !== 404) return { failure: pipelineFail(wide.status, wide.json) };
+    const roadmapExecutions = wide.status === 200 ? (arrayAt(wide.json, 'executions') as RouterExecution[]) : [];
+    return { targets: listTargets({ executions, roadmapExecutions, liveAgents }) };
+  } catch {
+    return { failure: fail(502, 'pipeline_unavailable', tr('o Hermes Pipeline não respondeu'), undefined, true) };
+  }
+}
+
+function optionOf(route: RouteResult): SessionOption {
+  const { candidate, agent } = route;
+  return {
+    provider: candidate.provider,
+    sessionId: candidate.sessionId,
+    ...(agent ? { agentId: agent.id } : {}),
+    live: !!agent,
+    resumable: route.resumable,
+    ...(candidate.profile ? { profile: candidate.profile } : {}),
+    ...(candidate.model ? { model: candidate.model } : {}),
+    lastAt: candidate.at,
+    scope: route.reason.startsWith('roadmap') ? 'roadmap' : 'item',
+  };
+}
+
+/** GET /api/roadmap/sessions?roadmapId=&itemId=: o que o seletor da gaveta mostra. */
+export async function sessionOptions(
+  deps: ConverseDeps,
+  get: PipelineGet,
+  allowedRoadmap: (id: string) => boolean,
+  query: { roadmapId?: unknown; itemId?: unknown },
+): Promise<ConverseOutcome> {
+  const roadmapId = idOf(query.roadmapId);
+  const itemId = idOf(query.itemId);
+  if (!roadmapId || !itemId) return fail(400, 'bad_request', tr('esperado {roadmapId, itemId}'));
+  if (!allowedRoadmap(roadmapId)) return fail(404, 'not_found', tr('roadmap fora da lista permitida'));
+  const found = await targetsFor(deps, get, roadmapId, itemId);
+  if ('failure' in found) return found.failure;
+  const first = found.targets[0];
+  const body: SessionOptions = {
+    options: found.targets.map(optionOf),
+    suggested: first ? { provider: first.candidate.provider, sessionId: first.candidate.sessionId } : null,
+  };
+  return { status: 200, body };
 }
 
 export async function converse(
@@ -66,27 +163,15 @@ export async function converse(
   if (text.length > TEXT_MAX) return fail(400, 'bad_request', tr('a mensagem passa de 19.000 caracteres'));
   if (!allowedRoadmap(roadmapId)) return fail(404, 'not_found', tr('roadmap fora da lista permitida'));
 
-  const base = `/api/roadmaps/${encodeURIComponent(roadmapId)}/items/${encodeURIComponent(itemId)}`;
-  let participants: RouterParticipant[] = [];
-  let executions: RouterExecution[] = [];
-  try {
-    const found = await get(`${base}/participants`);
-    if (found.status === 200) participants = arrayAt(found.json, 'participants') as RouterParticipant[];
-    // Pipeline antigo (sem participants) ou item sem participante: o histórico de execuções ainda diz quem trabalhou.
-    if (participants.length === 0) {
-      const history = await get(`${base}/executions`);
-      if (history.status === 200) executions = arrayAt(history.json, 'executions') as RouterExecution[];
-    }
-  } catch {
-    return fail(502, 'pipeline_unavailable', tr('o Hermes Pipeline não respondeu'), undefined, true);
+  const found = await targetsFor(deps, get, roadmapId, itemId);
+  if ('failure' in found) return found.failure;
+
+  let route: RouteResult | undefined = found.targets[0];
+  if (body.session !== undefined) {
+    const chosen = body.session && typeof body.session === 'object' ? (body.session as Record<string, unknown>) : {};
+    route = found.targets.find((target) => target.candidate.provider === chosen.provider && target.candidate.sessionId === chosen.sessionId);
+    if (!route) return fail(400, 'unknown_session', tr('essa sessão não trabalhou neste item'));
   }
-
-  const liveAgents: LiveAgent[] = deps.office
-    .list()
-    .filter((agent) => agent.kind === 'main')
-    .map((agent) => ({ id: agent.id, provider: agent.provider, sessionId: agent.sessionId, canMessage: deps.messages.canMessage(agent.id) }));
-
-  const route = resolveTarget({ participants, executions, liveAgents });
   if (!route) return fail(404, 'no_session', tr('nenhuma sessão registrada trabalhou neste item'));
   if (!route.agent) {
     return fail(409, 'session_closed', tr('a sessão que trabalhou neste item está fechada; abra-a para conversar'), { route: routeSummary(route) });
