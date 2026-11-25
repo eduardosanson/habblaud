@@ -372,6 +372,11 @@ export async function getDelivery(messageId: string): Promise<DeliveryState | nu
   return (await response.json()) as DeliveryState;
 }
 
+/** A decisão da pessoa sobre um item em revisão; `expectedRevision` é a do roadmap que ela estava vendo. */
+export function postReview(body: { roadmapId: string; itemId: string; decision: 'approve' | 'return'; note: string; expectedRevision: number; actionId: string }): Promise<unknown> {
+  return request('/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
 /** Reabre a própria sessão finalizada num terminal do Habblaud (`reopened: false` = já estava aberta). */
 export function postReopen(body: { roadmapId: string; itemId: string; session: { provider: Provider; sessionId: string } }): Promise<{ reopened: boolean; agentId?: string }> {
   return request('/reopen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

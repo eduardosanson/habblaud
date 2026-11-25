@@ -2121,6 +2121,24 @@ img {
   overflow-wrap: anywhere;
 }
 
+.rp-decision__note {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(139, 152, 179, 0.3);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+.rp-decision__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .rp-detail__footer {
   display: flex;
   flex-wrap: wrap;

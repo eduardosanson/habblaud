@@ -17,7 +17,7 @@ import { awaitDelivery, parseTerminalEvent, repliesTo } from './bridge';
 import { renderChatBackdrop, renderConversation } from './conversation';
 import { loadConversation, saveConversation } from './conversation-store';
 import { formatDateTime, hydrateLive, loadLiveData, sourceFor } from './live';
-import { getDelivery, listSessionOptions, PipelineError, postConverse, postReopen, subscribeRoadmap, type Subscription } from './pipeline';
+import { getDelivery, listSessionOptions, PipelineError, postConverse, postReopen, subscribeRoadmap, type Subscription, postReview } from './pipeline';
 import { canSend, initialChoice, reopenTarget, sameSession, type SessionChoice } from './session-picker';
 import type { AppActions, AppState, ChatMessage, SessionPickerState, StreamStatus, ToastState } from './state';
 import type { TerminalEntry } from '../../../shared/types';
@@ -65,6 +65,7 @@ function createInitialState(): AppState {
       sessions: emptySessions(),
     },
     toast: null,
+    review: { notes: {}, sending: null },
     source: null,
     roadmapStream: 'closed',
   };
@@ -809,6 +810,38 @@ export function start(): void {
           state.conversation.draftText = value;
           state.conversation.typing = false;
           actions.showToast(tr('O agente não recebeu a mensagem: {0}', [describeError(error)]), 'error');
+          render();
+        });
+    },
+
+    setReviewNote(itemId, note) {
+      // sem render: redesenhar a cada tecla tiraria o foco do campo
+      state.review.notes[itemId] = note;
+    },
+
+    decideReview(planId, decision) {
+      const roadmap = selectedRoadmap();
+      const plan = roadmap ? planById(roadmap.id, planId) : undefined;
+      if (!roadmap || !plan || state.review.sending) return;
+      const note = (state.review.notes[plan.apiId] ?? '').trim();
+      if (decision === 'return' && !note) {
+        actions.showToast(tr('Para devolver, escreva o que precisa mudar.'), 'error');
+        return;
+      }
+      state.review.sending = plan.apiId;
+      render();
+      void postReview({ roadmapId: roadmap.id, itemId: plan.apiId, decision, note, expectedRevision: roadmap.revision, actionId: uuid() })
+        .then(() => {
+          delete state.review.notes[plan.apiId];
+          actions.showToast(decision === 'approve' ? tr('{0} aprovado.', [plan.id]) : tr('{0} devolvido.', [plan.id]), 'ok');
+        })
+        .catch((error: unknown) => {
+          actions.showToast(tr('A decisão não foi registrada: {0}', [describeError(error)]), 'error');
+        })
+        .finally(() => {
+          state.review.sending = null;
+          // aprovado, devolvido ou desatualizado: a tela relê o roadmap
+          void reloadData(false);
           render();
         });
     },
