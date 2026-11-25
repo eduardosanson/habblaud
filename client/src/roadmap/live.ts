@@ -30,12 +30,13 @@ import {
 import {
   getRoadmap,
   getRoadmapStatus,
+  listRoadmapExecutions,
   listRoadmaps,
-  listSessions,
   PipelineError,
   type ApiActivity,
   type ApiDependency,
   type ApiItem,
+  type ApiItemExecution,
   type ApiRoadmap,
   type ApiSession,
   type ApiSnapshot,
@@ -501,12 +502,48 @@ export function hydrateLive(snapshots: ApiSnapshot[], sessions: ApiSession[]): R
   return roadmaps;
 }
 
-/** O pipeline novo só registra execuções e não expõe mais /agent/sessions: 404 vale "sem sessões". */
-async function listSessionsIfExposed(): Promise<{ sessions: ApiSession[] }> {
+/**
+ * O pipeline só registra execuções (não há mais /agent/sessions): as sessões vêm do que ele registrou. Uma por
+ * `provider:workerSessionId`; execução sem id de sessão não conta. Da mais antiga para a mais nova, porque
+ * `buildAgents` deixa a última de cada agente (perfil) valer.
+ */
+export function sessionsFromExecutions(executions: readonly ApiItemExecution[]): ApiSession[] {
+  const sessions = new Map<string, ApiSession>();
+  for (const e of executions) {
+    if (!e.workerSessionId) continue;
+    const id = `${e.provider}:${e.workerSessionId}`;
+    const seen = e.endedAt ?? e.startedAt;
+    const running = e.outcome === 'running';
+    const known = sessions.get(id);
+    if (!known) {
+      sessions.set(id, {
+        id,
+        agentId: e.profile,
+        displayName: e.profile,
+        harness: e.provider,
+        model: e.model,
+        status: running ? 'active' : 'idle',
+        // Quem executou item registrou no roadmap; sem isso a página o chamaria de "Somente leitura".
+        capabilities: ['roadmap.write'],
+        roadmapIds: [e.roadmapId],
+        currentItemId: running ? e.itemId : null,
+        lastSeen: seen,
+      });
+      continue;
+    }
+    if (!known.roadmapIds.includes(e.roadmapId)) known.roadmapIds.push(e.roadmapId);
+    if (seen > known.lastSeen) Object.assign(known, { agentId: e.profile, displayName: e.profile, model: e.model, lastSeen: seen });
+    if (running) Object.assign(known, { status: 'active', currentItemId: e.itemId });
+  }
+  return [...sessions.values()].sort((a, b) => (a.lastSeen < b.lastSeen ? -1 : a.lastSeen > b.lastSeen ? 1 : 0));
+}
+
+/** As execuções de um roadmap são auxiliares (chips de agentes): falha do pipeline aqui não derruba a página. */
+async function executionsOf(roadmapId: string): Promise<ApiItemExecution[]> {
   try {
-    return await listSessions();
+    return (await listRoadmapExecutions(roadmapId)).executions;
   } catch (error) {
-    if (error instanceof PipelineError && error.status === 404) return { sessions: [] };
+    if (error instanceof PipelineError) return [];
     throw error;
   }
 }
@@ -521,9 +558,12 @@ export async function loadLiveData(): Promise<{ snapshots: ApiSnapshot[]; sessio
       false,
     );
   }
-  const [{ roadmaps }, { sessions }] = await Promise.all([listRoadmaps(), listSessionsIfExposed()]);
-  const snapshots = await Promise.all(roadmaps.map((roadmap) => getRoadmap(roadmap.id)));
-  return { snapshots, sessions };
+  const { roadmaps } = await listRoadmaps();
+  const [snapshots, executions] = await Promise.all([
+    Promise.all(roadmaps.map((roadmap) => getRoadmap(roadmap.id))),
+    Promise.all(roadmaps.map((roadmap) => executionsOf(roadmap.id))),
+  ]);
+  return { snapshots, sessions: sessionsFromExecutions(executions.flat()) };
 }
 
 export function sourceFor(roadmap: Roadmap | undefined): { revision: number; generatedAt: string; label: string; updatedAt: string } | null {

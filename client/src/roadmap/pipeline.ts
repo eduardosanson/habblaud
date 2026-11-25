@@ -316,8 +316,33 @@ export function listExecutions(roadmapId: string, itemId: string): Promise<{ roa
   return request(itemPath(roadmapId, itemId, 'executions'));
 }
 
-export function listParticipants(roadmapId: string, itemId: string): Promise<{ roadmapId: string; itemId: string; participants: ApiParticipant[] }> {
-  return request(itemPath(roadmapId, itemId, 'participants'));
+/** Execuções recentes do roadmap inteiro (a mais nova primeiro); o pipeline aceita até 200. */
+export function listRoadmapExecutions(roadmapId: string, limit = 200): Promise<{ roadmapId: string; executions: ApiItemExecution[] }> {
+  return request(`/roadmaps/${encodeURIComponent(roadmapId)}/executions?limit=${limit}`);
+}
+
+/** Sessão que trabalhou no item (ou no roadmap), como o servidor do Habblaud a lista para o seletor da gaveta. */
+export interface ApiSessionOption {
+  provider: Provider;
+  sessionId: string;
+  /** Presente quando a sessão está viva no escritório e aceita mensagem. */
+  agentId?: string;
+  live: boolean;
+  resumable: boolean;
+  profile?: string;
+  model?: string;
+  lastAt: string;
+  scope: 'item' | 'roadmap';
+}
+
+export interface ApiSessionOptions {
+  options: ApiSessionOption[];
+  /** A que o roteador escolheria sozinho; `null` quando ninguém registrou sessão. */
+  suggested: { provider: Provider; sessionId: string } | null;
+}
+
+export function listSessionOptions(roadmapId: string, itemId: string): Promise<ApiSessionOptions> {
+  return request(`/sessions?${new URLSearchParams({ roadmapId, itemId })}`);
 }
 
 /** Resposta de POST /api/roadmap/converse: a pergunta entrou na fila da sessão do agente que trabalhou no item. */
@@ -330,13 +355,12 @@ export interface ApiConverseAccepted {
   route: { reason: 'live' | 'recent' | 'roadmap-live' | 'roadmap-recent'; provider: Provider; resumable: boolean; profile?: string; role?: string };
 }
 
-/** Pergunta ao agente real que trabalhou no item. 409 `session_closed` traz `details.route` (a sessão está fechada). */
-export function postConverse(body: { roadmapId: string; itemId: string; text: string }): Promise<ApiConverseAccepted> {
+/**
+ * Pergunta ao agente real que trabalhou no item; `session` escolhe uma das de `listSessionOptions` (sem ela, vale a
+ * sugerida). 409 `session_closed` traz `details.route` (a sessão está fechada).
+ */
+export function postConverse(body: { roadmapId: string; itemId: string; text: string; session?: { provider: Provider; sessionId: string } }): Promise<ApiConverseAccepted> {
   return request('/converse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-}
-
-export function listSessions(): Promise<{ sessions: ApiSession[] }> {
-  return request('/agent/sessions');
 }
 
 export interface Subscription {
