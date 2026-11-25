@@ -4968,3 +4968,40 @@ img {
     display: none;
   }
 }
+
+/* Seletor da sessão com quem conversar (gaveta de conversa) */
+.rp-session {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 14px 0;
+}
+
+.rp-session__select {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font: inherit;
+}
+
+.rp-session__note {
+  flex: 1 1 100%;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.rp-session__note.is-error {
+  opacity: 1;
+  color: var(--bad, #ff8a8a);
+}
+
+.rp-send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

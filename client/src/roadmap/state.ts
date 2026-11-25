@@ -1,5 +1,7 @@
 import type { Provider } from '../../../shared/types';
 import type { ConversationContext, WorkItemType } from './data';
+import type { ApiSessionOptions } from './pipeline';
+import type { SessionChoice } from './session-picker';
 
 export type Variant = 'overview' | 'phases' | 'backlog' | 'work';
 export type Filter = 'all' | 'active' | 'blocked' | 'done' | 'future';
@@ -30,6 +32,17 @@ export interface ConversationTarget {
   resumable: boolean;
 }
 
+/** Seletor de sessão da gaveta: a lista que o servidor montou para o plano em foco e a escolha da pessoa. */
+export interface SessionPickerState {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  options: ApiSessionOptions | null;
+  error: string | null;
+  /** Escolha da pessoa; `null` vale a sugerida. */
+  choice: SessionChoice | null;
+  /** Item para o qual a lista foi carregada; respostas atrasadas de outro item são descartadas. */
+  forItemId: string | null;
+}
+
 export interface ConversationUiState {
   open: boolean;
   context: ConversationContext;
@@ -43,6 +56,7 @@ export interface ConversationUiState {
   replyToken: number;
   /** Estado do stream da conversa do agente (terminal do Habblaud). */
   connection: StreamStatus;
+  sessions: SessionPickerState;
 }
 
 export interface ToastState {
@@ -100,6 +114,9 @@ export interface AppActions {
   setChatDraft(text: string): void;
   ask(question: string): void;
   send(text: string): void;
+  /** Recarrega a lista de sessões do plano em foco (também é o "tentar de novo" do seletor). */
+  loadSessions(): void;
+  chooseSession(choice: SessionChoice): void;
   showToast(text: string, tone?: ToastState['tone']): void;
   jumpToCurrent(): void;
 }

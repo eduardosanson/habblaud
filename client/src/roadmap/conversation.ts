@@ -16,6 +16,7 @@ import {
 import { suggestedQuestions } from './conversation-data';
 import type { AppActions, AppState, ChatMessage } from './state';
 import { providerLabel } from './bridge';
+import { canSend, describeOption, initialChoice, sameSession } from './session-picker';
 import { emptyState, h, icon } from './ui';
 import type { Provider } from '../../../shared/types';
 
@@ -69,6 +70,60 @@ function typingEl(state: AppState): HTMLElement {
       h('div', { class: 'rp-bubble rp-typing' }, h('span'), h('span'), h('span')),
     ),
   );
+}
+
+/** Por que o envio está bloqueado (sessão fechada, ninguém registrado…); `null` quando dá para enviar ou a lista ainda não chegou. */
+function sendBlockedReason(state: AppState): string | null {
+  const picker = state.conversation.sessions;
+  if (picker.status !== 'ready' || !picker.options) return null;
+  const verdict = canSend(picker.options, picker.choice ?? initialChoice(picker.options));
+  return verdict.ok ? null : verdict.reason;
+}
+
+/** Seletor da sessão com quem conversar: a sugerida já vem escolhida; fechadas aparecem, mas não recebem. */
+function sessionPickerEl(state: AppState, actions: AppActions): HTMLElement {
+  const picker = state.conversation.sessions;
+  const box = h(
+    'div',
+    { class: 'rp-session', attrs: { role: 'group', 'aria-label': tr('Sessão com quem conversar') } },
+    h('span', { class: 'rp-label', text: tr('Sessão') }),
+  );
+  if (picker.status === 'error') {
+    box.append(
+      h('span', { class: 'rp-session__note is-error', attrs: { role: 'alert' }, text: tr('Não foi possível listar as sessões: {0}', [picker.error ?? '']) }),
+      h('button', { class: 'rp-btn', attrs: { type: 'button' }, on: { click: () => actions.loadSessions() } }, h('span', { text: tr('Tentar de novo') })),
+    );
+    return box;
+  }
+  const options = picker.options;
+  if (picker.status !== 'ready' || !options) {
+    box.append(h('span', { class: 'rp-session__note', text: tr('Carregando as sessões…') }));
+    return box;
+  }
+  const choice = picker.choice ?? initialChoice(options);
+  if (options.options.length > 0) {
+    const select = h(
+      'select',
+      {
+        class: 'rp-session__select',
+        id: 'rp-session-select',
+        attrs: { 'aria-label': tr('Sessão com quem conversar') },
+        on: {
+          change: (event) => {
+            const picked = options.options[Number((event.target as HTMLSelectElement).value)];
+            if (picked) actions.chooseSession({ provider: picked.provider, sessionId: picked.sessionId });
+          },
+        },
+      },
+      options.options.map((option, index) =>
+        h('option', { attrs: { value: String(index), selected: choice !== null && sameSession(option, choice) }, text: describeOption(option) }),
+      ),
+    );
+    box.append(select);
+  }
+  const blocked = sendBlockedReason(state);
+  if (blocked) box.append(h('span', { class: 'rp-session__note', attrs: { role: 'status' }, text: blocked }));
+  return box;
 }
 
 export function renderChatBackdrop(actions: AppActions): HTMLElement {
@@ -215,7 +270,7 @@ export function renderConversation(state: AppState, actions: AppActions): HTMLEl
             'button',
             {
               class: 'rp-send-btn',
-              attrs: { type: 'submit', 'aria-label': tr('Enviar mensagem ao agente'), title: tr('Enviar mensagem ao agente') },
+              attrs: { type: 'submit', 'aria-label': tr('Enviar mensagem ao agente'), title: sendBlockedReason(state) ?? tr('Enviar mensagem ao agente'), disabled: sendBlockedReason(state) !== null },
             },
             icon('send'),
           ),
@@ -320,6 +375,7 @@ export function renderConversation(state: AppState, actions: AppActions): HTMLEl
       ),
     ),
     history,
+    canAsk ? sessionPickerEl(state, actions) : null,
     suggestions,
     composer,
   );

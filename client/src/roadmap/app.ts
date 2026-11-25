@@ -17,12 +17,14 @@ import { parseTerminalEvent, repliesTo } from './bridge';
 import { renderChatBackdrop, renderConversation } from './conversation';
 import { formatDateTime, hydrateLive, loadLiveData, sourceFor } from './live';
 import {
+  listSessionOptions,
   PipelineError,
   postConverse,
   subscribeRoadmap,
   type Subscription,
 } from './pipeline';
-import type { AppActions, AppState, ChatMessage, StreamStatus, ToastState } from './state';
+import { canSend, initialChoice, sameSession, type SessionChoice } from './session-picker';
+import type { AppActions, AppState, ChatMessage, SessionPickerState, StreamStatus, ToastState } from './state';
 import type { TerminalEntry } from '../../../shared/types';
 import { h, icon } from './ui';
 import { renderPage, renderRoadmapIndex, renderTopbar } from './views';
@@ -65,11 +67,16 @@ function createInitialState(): AppState {
       draftText: '',
       replyToken: 0,
       connection: 'closed',
+      sessions: emptySessions(),
     },
     toast: null,
     source: null,
     roadmapStream: 'closed',
   };
+}
+
+function emptySessions(): SessionPickerState {
+  return { status: 'idle', options: null, error: null, choice: null, forItemId: null };
 }
 
 function describeError(error: unknown): string {
@@ -437,6 +444,40 @@ export function start(): void {
     state.conversation.target = null;
     state.conversation.draftText = '';
     state.conversation.replyToken += 1;
+    sessionsToken += 1;
+    state.conversation.sessions = emptySessions();
+  };
+
+  /** Carrega a lista de sessões do plano em foco; fora de um plano, esvazia. A escolha anterior só sobrevive no mesmo item. */
+  let sessionsToken = 0;
+  const refreshSessions = (): void => {
+    const context = state.conversation.context;
+    const plan = context.kind === 'plan' && context.id ? planById(context.roadmapId, context.id) : undefined;
+    const picker = state.conversation.sessions;
+    const token = ++sessionsToken;
+    if (!plan) {
+      state.conversation.sessions = emptySessions();
+      return;
+    }
+    if (picker.forItemId !== plan.apiId) picker.choice = null;
+    picker.status = 'loading';
+    picker.error = null;
+    picker.forItemId = plan.apiId;
+    void listSessionOptions(context.roadmapId, plan.apiId)
+      .then((options) => {
+        if (token !== sessionsToken) return;
+        picker.options = options;
+        picker.status = 'ready';
+        const chosen = picker.choice;
+        if (chosen && !options.options.some((option) => sameSession(option, chosen))) picker.choice = null;
+        render();
+      })
+      .catch((error: unknown) => {
+        if (token !== sessionsToken) return;
+        picker.status = 'error';
+        picker.error = describeError(error);
+        render();
+      });
   };
 
   const actions: AppActions = {
@@ -580,6 +621,7 @@ export function start(): void {
       state.conversation.open = true;
       state.conversation.context = resolved;
       resetConversation();
+      refreshSessions();
       state.roadmapIndexOpen = false;
       state.roadmapMenuOpen = false;
       render();
@@ -613,8 +655,19 @@ export function start(): void {
         }
       }
       state.conversation.context = resolved;
+      refreshSessions();
       render();
       focusConversationTarget();
+    },
+
+    loadSessions() {
+      refreshSessions();
+      render();
+    },
+
+    chooseSession(choice) {
+      state.conversation.sessions.choice = choice;
+      render();
     },
 
     setChatDraft(text) {
@@ -634,6 +687,19 @@ export function start(): void {
         actions.showToast(tr('Escolha um plano: a pergunta vai para o agente que trabalhou nele.'), 'error');
         return;
       }
+      // Com a lista pronta, só vai para uma sessão viva da lista (a escolhida ou a sugerida). Enquanto ela carrega, ou se
+      // falhou, o servidor decide pela sugerida: a pergunta de um atalho não se perde por causa disso.
+      const picker = state.conversation.sessions;
+      let session: SessionChoice | undefined;
+      if (picker.status === 'ready' && picker.options) {
+        const choice = picker.choice ?? initialChoice(picker.options);
+        const verdict = canSend(picker.options, choice);
+        if (!verdict.ok) {
+          actions.showToast(verdict.reason, 'error');
+          return;
+        }
+        session = choice ?? undefined;
+      }
       const token = ++state.conversation.replyToken;
       closeBridge();
       const message: ChatMessage = { id: `user-${token}-${uuid()}`, role: 'user', text: value, at: formatDateTime(new Date().toISOString()) };
@@ -641,7 +707,7 @@ export function start(): void {
       state.conversation.draftText = '';
       state.conversation.typing = true;
       render();
-      void postConverse({ roadmapId: context.roadmapId, itemId: plan.apiId, text: value })
+      void postConverse({ roadmapId: context.roadmapId, itemId: plan.apiId, text: value, ...(session ? { session } : {}) })
         .then((accepted) => {
           if (state.conversation.replyToken !== token) return;
           const route = accepted.route;
