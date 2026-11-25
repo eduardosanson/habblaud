@@ -280,6 +280,8 @@ export interface ApiItemExecution {
   model: string;
   /** Id real da sessão do worker quando conhecido; vazio quando o pipeline não o capturou. */
   workerSessionId: string;
+  /** Pasta em que a sessão rodou (o pipeline grava em toda execução). */
+  cwd?: string;
   startedAt: string;
   endedAt?: string;
   outcome?: string;

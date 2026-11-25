@@ -6,7 +6,7 @@
 // A sessão vem de `resume` (pipeline novo) ou, em pipeline antigo, de `workerSessionId` + `provider` da execução.
 // Id de run do pipeline e `workerSessionId` vazio nunca viram sessão. O `argv` do pipeline nunca é usado.
 import type { Provider } from '../../shared/types';
-import { asProvider, isSessionId, providerOfHarness, resumeCommand, validateResume } from './harness';
+import { isSessionId, providerOfHarness, providerOfPipeline, resumeCommand, safeWorkdir, validateResume } from './harness';
 
 /** O que o roteador lê de um participante (subconjunto do que o pipeline devolve). */
 export interface RouterParticipant {
@@ -25,6 +25,7 @@ export interface RouterExecution {
   provider?: string;
   harness?: string;
   workerSessionId?: string;
+  cwd?: string;
   startedAt?: string;
   endedAt?: string;
   resume?: unknown;
@@ -88,8 +89,10 @@ function candidatesOf(participants: readonly RouterParticipant[] = [], execution
       all.push(c);
       continue;
     }
-    const provider = providerOfHarness(e.harness) ?? asProvider(e.provider);
-    if (provider && isSessionId(e.workerSessionId)) all.push({ provider, sessionId: e.workerSessionId, ...extra });
+    const provider = providerOfHarness(e.harness) ?? providerOfPipeline(e.provider);
+    if (!provider || !isSessionId(e.workerSessionId)) continue;
+    const workdir = safeWorkdir(e.cwd);
+    all.push({ provider, sessionId: e.workerSessionId, ...(workdir ? { workdir } : {}), ...extra });
   }
   // Mais novo primeiro; o empate fica na ordem em que chegou. Uma sessão só entra uma vez (a mais nova dela).
   const ordered = all.map((c, i) => ({ c, i })).sort((a, b) => (a.c.at < b.c.at ? 1 : a.c.at > b.c.at ? -1 : a.i - b.i));
@@ -108,17 +111,24 @@ function resumable(c: Candidate): boolean {
   return !!c.workdir && resumeCommand({ provider: c.provider, sessionId: c.sessionId, workdir: c.workdir }) !== null;
 }
 
-function pick(candidates: readonly Candidate[], liveAgents: readonly LiveAgent[], liveReason: RouteReason, recentReason: RouteReason): RouteResult | null {
-  for (const candidate of candidates) {
+/** Cada candidata vira um alvo; as vivas e acessíveis vêm primeiro, e a ordem de recência vale dentro de cada grupo. */
+function targetsOf(candidates: readonly Candidate[], liveAgents: readonly LiveAgent[], liveReason: RouteReason, recentReason: RouteReason): RouteResult[] {
+  const targets = candidates.map((candidate): RouteResult => {
     const agent = liveAgents.find((a) => a.canMessage === true && a.provider === candidate.provider && a.sessionId === candidate.sessionId);
-    if (agent) return { reason: liveReason, candidate, agent, resumable: resumable(candidate) };
-  }
-  const first = candidates[0];
-  return first ? { reason: recentReason, candidate: first, resumable: resumable(first) } : null;
+    return agent
+      ? { reason: liveReason, candidate, agent, resumable: resumable(candidate) }
+      : { reason: recentReason, candidate, resumable: resumable(candidate) };
+  });
+  return [...targets.filter((t) => t.agent), ...targets.filter((t) => !t.agent)];
+}
+
+/** Todas as sessões que trabalharam no item (ou, sem nenhuma, no roadmap), sem repetição. */
+export function listTargets(input: RouteInput): RouteResult[] {
+  const item = targetsOf(candidatesOf(input.participants, input.executions), input.liveAgents, 'live', 'recent');
+  if (item.length > 0) return item;
+  return targetsOf(candidatesOf(input.roadmapParticipants, input.roadmapExecutions), input.liveAgents, 'roadmap-live', 'roadmap-recent');
 }
 
 export function resolveTarget(input: RouteInput): RouteResult | null {
-  const item = pick(candidatesOf(input.participants, input.executions), input.liveAgents, 'live', 'recent');
-  if (item) return item;
-  return pick(candidatesOf(input.roadmapParticipants, input.roadmapExecutions), input.liveAgents, 'roadmap-live', 'roadmap-recent');
+  return listTargets(input)[0] ?? null;
 }

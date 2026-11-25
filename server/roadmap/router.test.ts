@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiItemExecution, ApiParticipant } from '../../client/src/roadmap/pipeline';
-import { resolveTarget, type LiveAgent } from './router';
+import { listTargets, resolveTarget, type LiveAgent } from './router';
 
 const SID_A = '0198a1b2-c3d4-4e5f-8a9b-0123456789ab';
 const SID_B = '0198a1b2-c3d4-4e5f-8a9b-0123456789cd';
@@ -122,5 +122,62 @@ describe('resolveTarget', () => {
       liveAgents: [live('codex', SID_A), live('codex', SID_B)],
     };
     expect(resolveTarget(input)).toEqual(resolveTarget(input));
+  });
+});
+
+describe('com as execuções do pipeline atual (provider do enum, sem participants)', () => {
+  it('acha o agente Claude vivo quando o provider vem como claude-code (CA01)', () => {
+    const result = resolveTarget({
+      executions: [execution({ provider: 'claude-code', workerSessionId: SID_A })],
+      liveAgents: [live('claude', SID_A)],
+    });
+    expect(result).toMatchObject({ reason: 'live', candidate: { provider: 'claude', sessionId: SID_A }, agent: { id: `claude:${SID_A}` } });
+  });
+
+  it('lista a mesma sessão uma vez, com a execução mais recente (CA03)', () => {
+    const targets = listTargets({
+      executions: [
+        execution({ id: 1, provider: 'codex', workerSessionId: SID_A, profile: 'velho', endedAt: '2026-11-22T08:00:00Z' }),
+        execution({ id: 2, provider: 'codex', workerSessionId: SID_A, profile: 'novo', endedAt: '2026-11-22T12:00:00Z' }),
+      ],
+      liveAgents: [],
+    });
+    expect(targets).toHaveLength(1);
+    expect(targets[0]!.candidate).toMatchObject({ sessionId: SID_A, profile: 'novo' });
+  });
+
+  it('não lista execução sem id de sessão (o revisor do pipeline)', () => {
+    const targets = listTargets({
+      executions: [execution({ provider: 'claude-subscription-directsdk-experimental', workerSessionId: '' }), execution({ workerSessionId: '' })],
+      liveAgents: [],
+    });
+    expect(targets).toEqual([]);
+  });
+
+  it('põe as vivas primeiro e depois as mais recentes', () => {
+    const targets = listTargets({
+      executions: [
+        execution({ id: 1, provider: 'codex', workerSessionId: SID_A, endedAt: '2026-11-22T12:00:00Z' }),
+        execution({ id: 2, provider: 'codex', workerSessionId: SID_B, endedAt: '2026-11-22T08:00:00Z' }),
+      ],
+      liveAgents: [live('codex', SID_B)],
+    });
+    expect(targets.map((t) => t.candidate.sessionId)).toEqual([SID_B, SID_A]);
+    expect(targets[0]!.agent?.id).toBe(`codex:${SID_B}`);
+    expect(targets[1]!.agent).toBeUndefined();
+  });
+
+  it('só diz que dá para reabrir quando a execução traz o cwd', () => {
+    const withCwd = resolveTarget({ executions: [execution({ provider: 'claude-code', workerSessionId: SID_A, cwd: '/home/u/proj' })], liveAgents: [] });
+    const without = resolveTarget({ executions: [execution({ provider: 'claude-code', workerSessionId: SID_A })], liveAgents: [] });
+    expect(withCwd).toMatchObject({ reason: 'recent', resumable: true, candidate: { workdir: '/home/u/proj' } });
+    expect(without).toMatchObject({ reason: 'recent', resumable: false });
+  });
+
+  it('descarta cwd relativo ou com ..', () => {
+    const rel = resolveTarget({ executions: [execution({ provider: 'claude-code', workerSessionId: SID_A, cwd: '../x' })], liveAgents: [] });
+    const dots = resolveTarget({ executions: [execution({ provider: 'claude-code', workerSessionId: SID_A, cwd: '/a/../b' })], liveAgents: [] });
+    expect(rel).toMatchObject({ resumable: false });
+    expect(dots).toMatchObject({ resumable: false });
   });
 });

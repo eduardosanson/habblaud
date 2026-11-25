@@ -50,7 +50,13 @@ export function providerOfHarness(harness: unknown): Provider | null {
   return Object.hasOwn(PROVIDER_BY_HARNESS, harness) ? PROVIDER_BY_HARNESS[harness]! : null;
 }
 
-function safeWorkdir(value: unknown): string | null {
+/** `Provider` do Habblaud para o `provider` que o pipeline grava nas execuções (`claude-code` → `claude`), ou `null`. */
+export function providerOfPipeline(value: unknown): Provider | null {
+  return providerOfHarness(value) ?? asProvider(value);
+}
+
+/** Pasta absoluta, sem `..` nem NUL; qualquer outra coisa vira `null`. */
+export function safeWorkdir(value: unknown): string | null {
   if (typeof value !== 'string' || value.length === 0 || value.length > WORKDIR_MAX) return null;
   if (!value.startsWith('/') || value.includes('\0')) return null;
   if (value.split('/').includes('..')) return null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { providerOfHarness, resumeCommand, validateResume } from './harness';
+import { providerOfHarness, providerOfPipeline, resumeCommand, validateResume } from './harness';
 
 describe('providerOfHarness', () => {
   it('mapeia os harness do pipeline para o Provider do Habblaud (CA01)', () => {
@@ -75,5 +75,21 @@ describe('resumeCommand', () => {
     expect(resumeCommand({ provider: 'antigravity', ...base })).toBeNull();
     expect(resumeCommand({ provider: 'hermes', ...base })).toBeNull();
     expect(resumeCommand({ provider: 'opencode', ...base })).toBeNull();
+  });
+});
+
+describe('providerOfPipeline', () => {
+  it('entende o enum de provider que o pipeline grava nas execuções', () => {
+    expect(providerOfPipeline('claude-code')).toBe('claude');
+    expect(providerOfPipeline('codex')).toBe('codex');
+    expect(providerOfPipeline('opencode')).toBe('opencode');
+    expect(providerOfPipeline('antigravity')).toBe('antigravity');
+    expect(providerOfPipeline('hermes')).toBe('hermes');
+  });
+
+  it('ignora provider fora do enum, vazio ou ausente', () => {
+    expect(providerOfPipeline('claude-subscription-directsdk-experimental')).toBeNull();
+    expect(providerOfPipeline('')).toBeNull();
+    expect(providerOfPipeline(undefined)).toBeNull();
   });
 });
