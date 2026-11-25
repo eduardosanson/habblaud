@@ -8,7 +8,7 @@ import { tr } from '../../../shared/i18n';
 
 export type Provider = 'claude' | 'codex' | 'opencode' | 'hermes';
 export type PipelineStatus = 'backlog' | 'ready' | 'in_progress' | 'blocked' | 'review' | 'done' | 'canceled';
-export type PlanStatus = 'done' | 'active' | 'blocked' | 'future';
+export type PlanStatus = 'done' | 'active' | 'review' | 'blocked' | 'future';
 export type StepStatus = 'done' | 'active' | 'pending' | 'blocked';
 export type DepKind = 'plan' | 'phase' | 'external';
 export type AgentStatus = 'working' | 'blocked' | 'idle';
@@ -182,7 +182,7 @@ export interface Milestone {
   title: string;
   date: string;
   daysLeft: string;
-  status: 'on-track' | 'at-risk' | 'late';
+  status: 'on-track' | 'at-risk' | 'late' | 'review' | 'done';
   summary: string;
   criteria: { text: string; done: boolean }[];
   planIds: string[];
@@ -227,6 +227,7 @@ export interface PlanRef {
 export interface StatusCounts {
   done: number;
   active: number;
+  review: number;
   blocked: number;
   future: number;
   total: number;
@@ -292,7 +293,7 @@ export function compactTokens(n: number): string {
 }
 
 export function countPlans(plans: readonly Plan[]): StatusCounts {
-  const counts: StatusCounts = { done: 0, active: 0, blocked: 0, future: 0, total: plans.length };
+  const counts: StatusCounts = { done: 0, active: 0, review: 0, blocked: 0, future: 0, total: plans.length };
   for (const p of plans) counts[p.status] += 1;
   return counts;
 }
@@ -302,6 +303,7 @@ export function phaseStatus(phase: Phase): PlanStatus {
   if (c.blocked > 0) return 'blocked';
   if (c.active > 0) return 'active';
   if (c.total > 0 && c.done === c.total) return 'done';
+  if (c.review > 0) return 'review';
   return 'future';
 }
 
@@ -333,10 +335,31 @@ export function defaultPlanFor(roadmap: Roadmap): Plan {
   const plan =
     current?.plans.find((p) => p.status === 'active') ??
     current?.plans.find((p) => p.status === 'blocked') ??
+    current?.plans.find((p) => p.status === 'review') ??
     current?.plans[0] ??
     roadmapPlans(roadmap)[0];
   if (!plan) throw new Error('roadmap sem itens');
   return plan;
+}
+
+/** O item que alguém está tocando ou que espera uma pessoa; `undefined` quando não há nenhum. */
+export function workFocus(roadmap: Roadmap): Plan | undefined {
+  const plans = roadmapPlans(roadmap);
+  return plans.find((p) => p.status === 'active') ?? plans.find((p) => p.status === 'blocked') ?? plans.find((p) => p.status === 'review');
+}
+
+export type RoadmapState = RoadmapStatus | 'done' | 'review';
+
+/**
+ * Estado que a tela mostra. O pipeline só diz active/archived/draft: um roadmap ativo cujos itens já terminaram (ou
+ * só esperam revisão) não pode aparecer como se alguém estivesse trabalhando nele.
+ */
+export function roadmapState(roadmap: Roadmap): RoadmapState {
+  if (roadmap.status !== 'active') return roadmap.status;
+  const c = overallCounts(roadmap);
+  if (c.total > 0 && c.done === c.total) return 'done';
+  if (c.review > 0 && c.done + c.review === c.total) return 'review';
+  return 'active';
 }
 
 export function overallCounts(roadmap: Roadmap): StatusCounts {

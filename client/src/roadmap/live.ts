@@ -77,14 +77,16 @@ function sizeOf(value: string): Size {
 function planStatus(status: PipelineStatus): PlanStatus {
   if (status === 'done') return 'done';
   if (status === 'blocked') return 'blocked';
-  if (status === 'in_progress' || status === 'review') return 'active';
+  if (status === 'in_progress') return 'active';
+  if (status === 'review') return 'review';
   return 'future';
 }
 
 function dependencyStatus(status: string): PlanStatus {
   if (status === 'done') return 'done';
   if (status === 'blocked' || status === 'pending') return 'blocked';
-  if (status === 'active' || status === 'in_progress' || status === 'review') return 'active';
+  if (status === 'active' || status === 'in_progress') return 'active';
+  if (status === 'review') return 'review';
   return 'future';
 }
 
@@ -445,11 +447,18 @@ export function mapRoadmap(snapshot: ApiSnapshot, agents: Map<string, Agent>): R
   for (const phase of api.phases ?? []) for (const item of phase.items ?? []) itemKeys.set(item.id, item.key);
   const active = plans.filter((plan) => plan.status === 'active').length;
   const blocked = plans.filter((plan) => plan.status === 'blocked').length;
-  const headline =
-    blocked > 0
+  const review = plans.filter((plan) => plan.status === 'review').length;
+  const done = plans.filter((plan) => plan.status === 'done').length;
+  const finished = plans.length > 0 && done === plans.length;
+  const headline = finished
+    ? tr('Nada em andamento: {0} de {1} itens concluídos.', [done, plans.length])
+    : blocked > 0
       ? tr('{0} em andamento, {1} bloqueios e o restante no backlog.', [active, blocked])
-      : tr('{0} em andamento e o restante no backlog.', [active]);
+      : review > 0
+        ? tr('{0} em andamento, {1} em revisão e o restante no backlog.', [active, review])
+        : tr('{0} em andamento e o restante no backlog.', [active]);
   const milestoneTitle = humanize(api.milestone);
+  const waiting = !finished && review > 0 && done + review === plans.length;
   return {
     id: api.id,
     title: api.title,
@@ -477,7 +486,7 @@ export function mapRoadmap(snapshot: ApiSnapshot, agents: Map<string, Agent>): R
       title: milestoneTitle,
       date: '',
       daysLeft: tr('sem data'),
-      status: blocked > 0 ? 'at-risk' : 'on-track',
+      status: finished ? 'done' : waiting ? 'review' : blocked > 0 ? 'at-risk' : 'on-track',
       summary: '',
       criteria: [],
       planIds: [],

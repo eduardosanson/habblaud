@@ -12,6 +12,8 @@ do meio (0.**3**.0).
 
 ### Corrigido (roadmap)
 
+- **Item terminado não aparece mais como ativo.** Item em revisão ganhou contagem, cor e filtro próprios; roadmap com
+  tudo concluído aparece como concluído, e o "Trabalho agora" não elege item concluído como foco.
 - **A pergunta chega com o nome do item.** A sessão recebia só o id interno e não sabia a que "5.1" a pergunta se
   referia; agora o número e o título do item vão junto.
 

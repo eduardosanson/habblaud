@@ -539,6 +539,7 @@ export function start(): void {
         planId ??
         phase?.plans.find((p) => p.status === 'active')?.id ??
         phase?.plans.find((p) => p.status === 'blocked')?.id ??
+        phase?.plans.find((p) => p.status === 'review')?.id ??
         phase?.plans[0]?.id;
       if (targetPlanId) state.selectedPlanId = targetPlanId;
       state.detailOpen = Boolean(planId);
