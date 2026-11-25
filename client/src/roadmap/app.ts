@@ -13,16 +13,10 @@ import {
   type ConversationContext,
   type Roadmap,
 } from './data';
-import { parseTerminalEvent, repliesTo } from './bridge';
+import { awaitDelivery, parseTerminalEvent, repliesTo } from './bridge';
 import { renderChatBackdrop, renderConversation } from './conversation';
 import { formatDateTime, hydrateLive, loadLiveData, sourceFor } from './live';
-import {
-  listSessionOptions,
-  PipelineError,
-  postConverse, postReopen,
-  subscribeRoadmap,
-  type Subscription,
-} from './pipeline';
+import { getDelivery, listSessionOptions, PipelineError, postConverse, postReopen, subscribeRoadmap, type Subscription } from './pipeline';
 import { canSend, initialChoice, reopenTarget, sameSession, type SessionChoice } from './session-picker';
 import type { AppActions, AppState, ChatMessage, SessionPickerState, StreamStatus, ToastState } from './state';
 import type { TerminalEntry } from '../../../shared/types';
@@ -766,6 +760,22 @@ export function start(): void {
           state.conversation.target = { agentId: accepted.agentId, provider: route.provider, ...(route.profile ? { profile: route.profile } : {}), ...(route.role ? { role: route.role } : {}), resumable: route.resumable };
           followAgent(accepted.agentId, value, accepted.sentAt, token, { name: route.profile ?? route.provider, provider: route.provider });
           render();
+          const current = (): boolean => state.conversation.replyToken === token;
+          void awaitDelivery(() => getDelivery(accepted.messageId), () => new Promise((resolve) => window.setTimeout(resolve, 2_000)), current).then((outcome) => {
+            if (!outcome || outcome.ok || !current()) return;
+            // Aceita pela fila mas nunca entregue: diz na conversa (o aviso passageiro some) e devolve o texto.
+            closeBridge();
+            state.conversation.typing = false;
+            state.conversation.draftText = value;
+            state.conversation.messages.push({
+              id: `failed-${token}`,
+              role: 'agent',
+              author: { name: 'Habblaud', provider: route.provider },
+              text: tr('A pergunta não chegou à sessão do agente: {0}', [outcome.reason ?? tr('sem motivo informado')]),
+              at: formatDateTime(new Date().toISOString()),
+            });
+            render();
+          });
         })
         .catch((error: unknown) => {
           if (state.conversation.replyToken !== token) return;

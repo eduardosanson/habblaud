@@ -66,6 +66,40 @@ export function parseTerminalEvent(data: unknown, event: 'init' | 'append'): Ter
   return Array.isArray(list) ? list.filter(isConversationEntry) : [];
 }
 
+/** Situação de uma mensagem na fila do escritório (GET /api/messages/:id). */
+export interface DeliveryState {
+  status: 'queued' | 'sent' | 'delivered' | 'failed';
+  error?: string;
+}
+
+/** Leituras até desistir: o servidor resolve a mensagem em bem menos que isso. */
+export const DELIVERY_ATTEMPTS = 120;
+
+/**
+ * Acompanha a mensagem até a fila resolvê-la. `null` = não há o que afirmar (conversa trocada, mensagem desconhecida
+ * ou sem desfecho); falha de leitura não é falha de entrega.
+ */
+export async function awaitDelivery(
+  read: () => Promise<DeliveryState | null>,
+  wait: () => Promise<void>,
+  alive: () => boolean,
+): Promise<{ ok: true } | { ok: false; reason?: string } | null> {
+  for (let attempt = 0; attempt < DELIVERY_ATTEMPTS && alive(); attempt += 1) {
+    let state: DeliveryState | null;
+    try {
+      state = await read();
+    } catch {
+      await wait();
+      continue;
+    }
+    if (!state) return null;
+    if (state.status === 'delivered') return { ok: true };
+    if (state.status === 'failed') return { ok: false, ...(state.error ? { reason: state.error } : {}) };
+    await wait();
+  }
+  return null;
+}
+
 const PROVIDER_LABEL: Readonly<Record<Provider, string>> = {
   claude: 'Claude Code',
   codex: 'Codex',
