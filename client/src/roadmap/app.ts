@@ -226,7 +226,10 @@ export function start(): void {
   const syncHistory = (): void => {
     const { open, context, messages } = state.conversation;
     if (!open || context.kind !== 'plan' || !context.id) return;
-    const key = `${context.roadmapId}:${context.id}`;
+    // Pelo id canônico do item: a chave exibida (o contexto) pode repetir ou mudar.
+    const plan = planById(context.roadmapId, context.id);
+    if (!plan) return;
+    const key = `${context.roadmapId}:${plan.apiId}`;
     let store: Storage | undefined;
     try {
       store = window.sessionStorage;
