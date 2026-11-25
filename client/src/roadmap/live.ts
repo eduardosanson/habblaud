@@ -500,6 +500,8 @@ export function mapRoadmap(snapshot: ApiSnapshot, agents: Map<string, Agent>): R
   };
 }
 
+const STAGE_PREFIX = 'stage:';
+
 /** A execução mais recente que escreveu um resumo, por item. */
 function attachDeliveries(roadmaps: Roadmap[], executions: readonly ApiItemExecution[]): void {
   const latest = new Map<string, ApiItemExecution>();
@@ -509,7 +511,16 @@ function attachDeliveries(roadmaps: Roadmap[], executions: readonly ApiItemExecu
     const known = latest.get(`${e.roadmapId}:${e.itemId}`);
     if (!known || when(e) >= when(known)) latest.set(`${e.roadmapId}:${e.itemId}`, e);
   }
+  // A etapa mais recente publicada decide, mesmo que outro resumo sem etapa tenha chegado depois.
+  const stages = new Map<string, ApiItemExecution>();
+  for (const e of executions) {
+    if (!e.outcome?.startsWith(STAGE_PREFIX)) continue;
+    const known = stages.get(`${e.roadmapId}:${e.itemId}`);
+    if (!known || when(e) >= when(known)) stages.set(`${e.roadmapId}:${e.itemId}`, e);
+  }
   for (const plan of roadmaps.flatMap((r) => r.phases.flatMap((phase) => phase.plans))) {
+    const stage = stages.get(`${plan.roadmapId}:${plan.apiId}`)?.outcome?.slice(STAGE_PREFIX.length);
+    if (stage && stage !== 'integrado') plan.agentStage = stage;
     const e = latest.get(`${plan.roadmapId}:${plan.apiId}`);
     if (e) plan.delivery = { summary: e.summary!.trim(), author: e.profile, model: e.model, at: formatDateTime(when(e)), changedFiles: e.changedFiles ?? [] };
   }

@@ -797,7 +797,7 @@ export function start(): void {
               id: `failed-${token}`,
               role: 'agent',
               author: { name: 'Habblaud', provider: route.provider },
-              text: tr('A entrega não foi confirmada: {0}. Se a sessão responder, a resposta aparece aqui.', [outcome.reason ?? tr('sem motivo informado')]),
+              text: tr('A pergunta não foi entregue: {0}. O que o agente fez está em “O que foi entregue”, neste item; para conversar, reabra a sessão.', [outcome.reason ?? tr('sem motivo informado')]),
               at: formatDateTime(new Date().toISOString()),
             });
             render();

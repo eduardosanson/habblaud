@@ -110,6 +110,8 @@ export interface Delivery {
 }
 
 export interface Plan {
+  /** Etapa em curso conduzida por agentes (publicada pelo pipeline); enquanto houver, a pessoa não decide a revisão. */
+  agentStage?: string;
   /** Chave estável exibida (ex.: 3.7); é o identificador de navegação na UI. */
   id: string;
   /** ID canônico no Hermes Pipeline (ex.: praca-3.7), usado nas ferramentas e no contexto. */
@@ -531,4 +533,9 @@ export function capacity(plans: readonly Plan[]): Capacity {
     sessions += p.actual?.sessions ?? 0;
   }
   return { estimateP50, estimateP80, actualTokens, sessions };
+}
+
+/** A revisão espera a pessoa: item em revisão que nenhum agente está conduzindo. */
+export function needsDecision(plan: Plan): boolean {
+  return plan.status === 'review' && !plan.agentStage;
 }

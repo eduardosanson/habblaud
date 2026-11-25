@@ -14,7 +14,7 @@ import {
   phaseById,
   phaseCounts,
   phaseStatus,
-  planById,
+  needsDecision, planById,
   replaceAgents,
   replaceRoadmaps,
   replaceSessions,
@@ -326,6 +326,35 @@ describe('o que a pessoa precisa para decidir', () => {
   it('sem resumo nenhum, não há entrega a mostrar', () => {
     hydrateLive([fixture], [], [run({ summary: '   ' })]);
     expect(planById('praca', '2.1')?.delivery).toBeUndefined();
+  });
+
+  it('revisão conduzida por agentes não pede decisão, mesmo com um resumo mais novo sem etapa', () => {
+    const copy = structuredClone(fixture);
+    copy.roadmap.phases.flatMap((phase) => phase.items ?? []).find((item) => item.id === 'praca-2.1')!.status = 'review';
+    hydrateLive([copy], [], [
+      run({ id: 1, summary: 'Etapa atual: Revisão', outcome: 'stage:revisao' }),
+      run({ id: 2, summary: 'nota solta', endedAt: '2026-11-19T12:00:00Z' }),
+    ]);
+    const plan = planById('praca', '2.1')!;
+    expect(plan.agentStage).toBe('revisao');
+    expect(needsDecision(plan)).toBe(false);
+  });
+
+  it('revisão sem etapa de agente continua pedindo a decisão da pessoa', () => {
+    const copy = structuredClone(fixture);
+    copy.roadmap.phases.flatMap((phase) => phase.items ?? []).find((item) => item.id === 'praca-2.1')!.status = 'review';
+    hydrateLive([copy], [], [run({ summary: 'Feito.' })]);
+    expect(needsDecision(planById('praca', '2.1')!)).toBe(true);
+  });
+
+  it('depois de integrada, a etapa de agente deixa de valer para uma nova revisão', () => {
+    const copy = structuredClone(fixture);
+    copy.roadmap.phases.flatMap((phase) => phase.items ?? []).find((item) => item.id === 'praca-2.1')!.status = 'review';
+    hydrateLive([copy], [], [
+      run({ id: 1, summary: 'a', outcome: 'stage:revisao', endedAt: '2026-11-19T09:00:00Z' }),
+      run({ id: 2, summary: 'b', outcome: 'stage:integrado' }),
+    ]);
+    expect(needsDecision(planById('praca', '2.1')!)).toBe(true);
   });
 
   it('ação sem agente identificado não é atribuída ao Hermes', () => {

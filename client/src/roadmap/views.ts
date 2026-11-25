@@ -1,7 +1,7 @@
 // Telas do roadmap: visão geral, fases com detalhe, trabalho agora e índice de roadmaps.
 // Toda navegação é local (estado em memória); nenhuma tela chama API ou lê sessão real.
 import { tr } from '../../../shared/i18n';
-import {
+import { needsDecision,
   AGENT_LIST,
   ROADMAPS,
   SESSIONS,
@@ -1738,7 +1738,10 @@ function renderDelivery(plan: Plan, state: AppState, actions: AppActions): HTMLE
       : h('p', { class: 'rp-body', text: tr('O agente não escreveu o que entregou. Pergunte à sessão antes de decidir.') }),
     delivery ? renderMarkdown(delivery.summary) : null,
     delivery?.changedFiles.length ? h('p', { class: 'rp-small', text: tr('Arquivos: {0}', [delivery.changedFiles.join(', ')]) }) : null,
-    waiting ? renderDecision(plan, state, actions) : null,
+    needsDecision(plan) ? renderDecision(plan, state, actions) : null,
+    waiting && !needsDecision(plan)
+      ? h('p', { class: 'rp-footnote' }, icon('info'), h('span', { text: tr('Revisão feita por agentes: você não precisa aprovar nem devolver.') }))
+      : null,
   );
 }
 
@@ -2117,7 +2120,7 @@ export function renderWork(state: AppState, actions: AppActions): HTMLElement {
             focus.status === 'active'
               ? h('p', { class: 'rp-focus__step' }, icon('work'), h('span', { text: tr('Agora: {0}', [focusStep?.title ?? focus.nextStep ?? focus.title]) }))
               : focus.status === 'review'
-                ? h('p', { class: 'rp-focus__step' }, icon('clock'), h('span', { text: tr('Terminado pelo agente; espera a sua revisão.') }))
+                ? h('p', { class: 'rp-focus__step' }, icon('clock'), h('span', { text: needsDecision(focus) ? tr('Terminado pelo agente; espera a sua revisão.') : tr('Em revisão por agentes; nada para você decidir.') }))
                 : null,
             statusBar(
               focus.steps.map((s) => ({ status: s.status, label: s.title })),
