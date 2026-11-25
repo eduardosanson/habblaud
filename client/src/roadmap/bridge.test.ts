@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TerminalEntry } from '../../../shared/types';
-import { parseTerminalEvent, providerLabel, repliesTo } from './bridge';
+import { awaitDelivery, parseTerminalEvent, providerLabel, repliesTo, type DeliveryState } from './bridge';
 
 const user = (id: string, at: number, text: string): TerminalEntry => ({ kind: 'user', id, at, text });
 const assistant = (id: string, at: number, text: string): TerminalEntry => ({ kind: 'assistant', id, at, text });
@@ -71,5 +71,37 @@ describe('providerLabel', () => {
     expect(providerLabel('codex')).toBe('Codex');
     expect(providerLabel('opencode')).toBe('OpenCode');
     expect(providerLabel('hermes')).toBe('Hermes');
+  });
+});
+
+describe('awaitDelivery', () => {
+  const reads = (...states: (DeliveryState | null | Error)[]) => {
+    let i = 0;
+    return async () => {
+      const next = states[Math.min(i++, states.length - 1)]!;
+      if (next instanceof Error) throw next;
+      return next;
+    };
+  };
+  const now = async () => {};
+  const alive = () => true;
+
+  it('mensagem que falha devolve o motivo do servidor', async () => {
+    const result = await awaitDelivery(reads({ status: 'queued' }, { status: 'sent' }, { status: 'failed', error: 'a sessão não buscou' }), now, alive);
+    expect(result).toEqual({ ok: false, reason: 'a sessão não buscou' });
+  });
+
+  it('mensagem entregue encerra o acompanhamento', async () => {
+    expect(await awaitDelivery(reads({ status: 'delivered' }), now, alive)).toEqual({ ok: true });
+  });
+
+  it('falha de rede numa leitura não vira falha de entrega', async () => {
+    expect(await awaitDelivery(reads(new Error('offline'), { status: 'delivered' }), now, alive)).toEqual({ ok: true });
+  });
+
+  it('mensagem desconhecida, conversa trocada ou sem fim: não afirma nada', async () => {
+    expect(await awaitDelivery(reads(null), now, alive)).toBeNull();
+    expect(await awaitDelivery(reads({ status: 'queued' }), now, () => false)).toBeNull();
+    expect(await awaitDelivery(reads({ status: 'queued' }), now, alive)).toBeNull();
   });
 });

@@ -4,6 +4,7 @@
 // token do Habblaud. O token tem só `roadmap.read` e `agent.converse`: nenhuma
 // ferramenta de mutação passa por aqui. Quem move o roadmap é o agente, no pipeline.
 
+import type { DeliveryState } from './bridge';
 import type { Provider } from '../../../shared/types';
 
 const BASE = '/api/roadmap';
@@ -361,6 +362,14 @@ export interface ApiConverseAccepted {
  */
 export function postConverse(body: { roadmapId: string; itemId: string; text: string; session?: { provider: Provider; sessionId: string } }): Promise<ApiConverseAccepted> {
   return request('/converse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
+/** Situação da pergunta na fila do escritório; `null` quando o servidor já não a conhece. */
+export async function getDelivery(messageId: string): Promise<DeliveryState | null> {
+  const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()) as DeliveryState;
 }
 
 /** Reabre a própria sessão finalizada num terminal do Habblaud (`reopened: false` = já estava aberta). */

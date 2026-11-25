@@ -12,6 +12,8 @@ do meio (0.**3**.0).
 
 ### Corrigido (roadmap)
 
+- **Pergunta que não chega deixa de ficar "digitando".** A gaveta acompanha a mensagem na fila do escritório e, se ela
+  falha, diz o motivo na conversa e devolve o texto ao campo.
 - **Item terminado não aparece mais como ativo.** Item em revisão ganhou contagem, cor e filtro próprios; roadmap com
   tudo concluído aparece como concluído, e o "Trabalho agora" não elege item concluído como foco.
 - **A pergunta chega com o nome do item.** A sessão recebia só o id interno e não sabia a que "5.1" a pergunta se
