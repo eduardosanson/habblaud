@@ -113,6 +113,26 @@ export async function targetsFor(deps: ConverseDeps, get: PipelineGet, roadmapId
   }
 }
 
+/** "5.1 «Título»" do item no snapshot; sem conseguir ler, o id. A sessão pode nunca ter visto o número do plano. */
+async function itemLabel(get: PipelineGet, roadmapId: string, itemId: string): Promise<string> {
+  try {
+    const snapshot = await get(`/api/roadmaps/${encodeURIComponent(roadmapId)}`);
+    const roadmap = snapshot.status === 200 ? (snapshot.json as { roadmap?: unknown } | null)?.roadmap : undefined;
+    for (const phase of arrayAt(roadmap, 'phases')) {
+      for (const raw of arrayAt(phase, 'items')) {
+        const item = raw as { id?: unknown; key?: unknown; title?: unknown };
+        if (item.id === itemId && typeof item.title === 'string') {
+          const title = item.title.replace(/\s+/g, ' ').slice(0, 200);
+          return typeof item.key === 'string' && item.key ? `${item.key.slice(0, 20)} «${title}»` : `«${title}»`;
+        }
+      }
+    }
+  } catch {
+    // o rótulo é só contexto: a pergunta não se perde por causa dele
+  }
+  return itemId;
+}
+
 function optionOf(route: RouteResult): SessionOption {
   const { candidate, agent } = route;
   return {
@@ -178,7 +198,7 @@ export async function converse(
     return fail(409, 'session_closed', tr('a sessão que trabalhou neste item está fechada; abra-a para conversar'), { route: routeSummary(route) });
   }
 
-  const framed = tr('Pergunta pelo roadmap {0}, item {1}:\n{2}', [roadmapId, itemId, text]);
+  const framed = tr('Pergunta pelo roadmap {0}, item {1}:\n{2}', [roadmapId, await itemLabel(get, roadmapId, itemId), text]);
   let sent: SendResult;
   try {
     sent = deps.messages.send({ agentId: route.agent.id, text: framed });

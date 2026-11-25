@@ -158,7 +158,20 @@ describe('POST /api/roadmap/converse', () => {
     const delivered = sent[0] as { agentId: string; text: string };
     expect(delivered.agentId).toBe('codex:1');
     expect(delivered.text).toContain('como ficou o teste?');
-    expect(seen).toEqual(['GET /api/roadmaps/r/items/i/executions Bearer segredo']);
+    expect(seen).toEqual(['GET /api/roadmaps/r/items/i/executions Bearer segredo', 'GET /api/roadmaps/r Bearer segredo']);
+  });
+
+  it('a pergunta chega com o número e o título do item, que a sessão pode nunca ter visto', async () => {
+    const snapshot = { roadmap: { id: 'r', phases: [{ id: 'f', items: [{ id: 'outro', key: '1.1', title: 'Outro' }, { id: 'i', key: '5.1', title: 'Revisar a busca' }] }] } };
+    const { base, sent } = await start(await fakePipeline({ item: [exec()], snapshot }));
+    await post(base, { roadmapId: 'r', itemId: 'i', text: 'o que mudou no 5.1?' });
+    expect((sent[0] as { text: string }).text).toContain('5.1 «Revisar a busca»');
+  });
+
+  it('sem conseguir ler o item, entrega com o id mesmo', async () => {
+    const { base, sent } = await start(await fakePipeline({ item: [exec()] }));
+    expect((await post(base, { roadmapId: 'r', itemId: 'i', text: 'oi' })).status).toBe(202);
+    expect((sent[0] as { text: string }).text).toContain('item i');
   });
 
   it('item sem execuções: usa quem trabalhou no roadmap', async () => {

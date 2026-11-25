@@ -10,6 +10,11 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Corrigido (roadmap)
+
+- **A pergunta chega com o nome do item.** A sessão recebia só o id interno e não sabia a que "5.1" a pergunta se
+  referia; agora o número e o título do item vão junto.
+
 ### Adicionado (roadmap)
 
 - **Reabrir a sessão que fez o trabalho.** Na gaveta do roadmap, uma sessão fechada do Claude Code ganhou o botão
