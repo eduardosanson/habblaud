@@ -36,6 +36,12 @@ export function reopenTarget(opts: ApiSessionOptions, choice: SessionChoice | nu
   return picked && !picked.live && picked.provider === 'claude' ? { provider: picked.provider, sessionId: picked.sessionId } : null;
 }
 
+/** A sessão que o seletor mostra (a escolhida ou, sem escolha, a inicial) está viva? */
+export function liveSelected(opts: ApiSessionOptions | null, choice: SessionChoice | null): boolean {
+  const shown = opts ? (choice ?? initialChoice(opts)) : null;
+  return !!shown && !!opts?.options.find((option) => sameSession(option, shown))?.live;
+}
+
 /** Dá para enviar? Só para uma sessão viva que está na lista; do contrário, o motivo para mostrar à pessoa. */
 export function canSend(opts: ApiSessionOptions, choice: SessionChoice | null): SendVerdict {
   if (opts.options.length === 0) return { ok: false, reason: tr('Ninguém registrou sessão neste item.') };

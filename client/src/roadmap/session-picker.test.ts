@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { providerLabel } from './bridge';
 import type { ApiSessionOption, ApiSessionOptions } from './pipeline';
-import { canSend, describeOption, initialChoice, reopenTarget, sameSession } from './session-picker';
+import { canSend, describeOption, initialChoice, reopenTarget, sameSession, liveSelected } from './session-picker';
 
 function option(over: Partial<ApiSessionOption> = {}): ApiSessionOption {
   return { provider: 'claude', sessionId: 's-1', live: true, resumable: false, lastAt: '2026-11-24T10:00:00Z', scope: 'item', ...over };
@@ -93,5 +93,19 @@ describe('reopenTarget', () => {
     expect(reopenTarget(list, { provider: 'codex', sessionId: 's-3' })).toBeNull();
     expect(reopenTarget(list, { provider: 'claude', sessionId: 'x' })).toBeNull();
     expect(reopenTarget(list, null)).toBeNull();
+  });
+});
+
+describe('liveSelected', () => {
+  const list = [option({ sessionId: 's-1', live: true }), option({ sessionId: 's-2', live: false })];
+
+  it('sem escolha explícita, vale a sessão que o seletor mostra (a sugerida)', () => {
+    expect(liveSelected(options(list, { provider: 'claude', sessionId: 's-1' }), null)).toBe(true);
+    expect(liveSelected(options(list, { provider: 'claude', sessionId: 's-2' }), null)).toBe(false);
+  });
+
+  it('a escolha da pessoa vence a sugestão; sem lista, não há sessão viva', () => {
+    expect(liveSelected(options(list, { provider: 'claude', sessionId: 's-1' }), { provider: 'claude', sessionId: 's-2' })).toBe(false);
+    expect(liveSelected(null, null)).toBe(false);
   });
 });

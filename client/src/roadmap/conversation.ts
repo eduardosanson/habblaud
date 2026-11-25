@@ -16,7 +16,7 @@ import {
 import { suggestedQuestions } from './conversation-data';
 import type { AppActions, AppState, ChatMessage } from './state';
 import { providerLabel } from './bridge';
-import { canSend, describeOption, initialChoice, reopenTarget, sameSession } from './session-picker';
+import { canSend, describeOption, initialChoice, liveSelected, reopenTarget, sameSession } from './session-picker';
 import { emptyState, h, icon } from './ui';
 import { renderMarkdown } from '../ui/markdown';
 import type { Provider } from '../../../shared/types';
@@ -323,8 +323,7 @@ export function renderConversation(state: AppState, actions: AppActions): HTMLEl
       );
 
   const picker = conversation.sessions;
-  const chosen = picker.options?.options.find((option) => picker.choice && sameSession(option, picker.choice));
-  const statusText = connectionLabel(conversation.connection, !!chosen?.live);
+  const statusText = connectionLabel(conversation.connection, liveSelected(picker.options, picker.choice));
 
   return h(
     'aside',
