@@ -62,6 +62,11 @@ describe('describeOption e sameSession', () => {
     expect(describeOption(option({ live: false }))).toContain('fechada');
   });
 
+  it('sessão que só trabalhou em outro item do roadmap é marcada como do roadmap', () => {
+    expect(describeOption(option({ profile: 'impl', scope: 'roadmap' }))).toContain('do roadmap');
+    expect(describeOption(option({ profile: 'impl', scope: 'item' }))).not.toContain('do roadmap');
+  });
+
   it('sem perfil, o texto ainda se sustenta', () => {
     expect(describeOption(option({ live: true }))).toContain(providerLabel('claude'));
   });

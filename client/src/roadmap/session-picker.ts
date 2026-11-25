@@ -23,10 +23,11 @@ export function initialChoice(opts: ApiSessionOptions): SessionChoice | null {
   return live ? { provider: live.provider, sessionId: live.sessionId } : null;
 }
 
-/** Texto de uma linha do seletor: provider, perfil e se a sessão está viva. */
+/** Texto de uma linha do seletor: provider, perfil, se é só do roadmap (não do item) e se a sessão está viva. */
 export function describeOption(option: ApiSessionOption): string {
   const state = option.live ? tr('viva') : tr('fechada');
-  return [providerLabel(option.provider), option.profile, state].filter(Boolean).join(' · ');
+  const scope = option.scope === 'roadmap' ? tr('do roadmap') : undefined;
+  return [providerLabel(option.provider), option.profile, scope, state].filter(Boolean).join(' · ');
 }
 
 /** Dá para enviar? Só para uma sessão viva que está na lista; do contrário, o motivo para mostrar à pessoa. */
