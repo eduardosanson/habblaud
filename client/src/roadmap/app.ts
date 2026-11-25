@@ -15,6 +15,7 @@ import {
 } from './data';
 import { awaitDelivery, parseTerminalEvent, repliesTo } from './bridge';
 import { renderChatBackdrop, renderConversation } from './conversation';
+import { loadConversation, saveConversation } from './conversation-store';
 import { formatDateTime, hydrateLive, loadLiveData, sourceFor } from './live';
 import { getDelivery, listSessionOptions, PipelineError, postConverse, postReopen, subscribeRoadmap, type Subscription } from './pipeline';
 import { canSend, initialChoice, reopenTarget, sameSession, type SessionChoice } from './session-picker';
@@ -220,7 +221,30 @@ export function start(): void {
     if (state.conversation.open) render();
   };
 
+  /** Item cuja conversa está carregada; trocar de item carrega o histórico dele, o resto só grava. */
+  let historyKey: string | null = null;
+  const syncHistory = (): void => {
+    const { open, context, messages } = state.conversation;
+    if (!open || context.kind !== 'plan' || !context.id) return;
+    // Pelo id canônico do item: a chave exibida (o contexto) pode repetir ou mudar.
+    const plan = planById(context.roadmapId, context.id);
+    if (!plan) return;
+    const key = `${context.roadmapId}:${plan.apiId}`;
+    let store: Storage | undefined;
+    try {
+      store = window.sessionStorage;
+    } catch {
+      store = undefined;
+    }
+    if (key === historyKey) saveConversation(store, key, messages);
+    else {
+      historyKey = key;
+      state.conversation.messages = loadConversation(store, key);
+    }
+  };
+
   const render = (): void => {
+    syncHistory();
     const focus = captureFocus();
     if (!state.ready) {
       root.replaceChildren(renderBoot(state, actions));
@@ -341,7 +365,7 @@ export function start(): void {
     }
     try {
       const data = await loadLiveData();
-      hydrateLive(data.snapshots, data.sessions);
+      hydrateLive(data.snapshots, data.sessions, data.executions);
       const current = selectedRoadmap();
       if (!current) throw new Error(tr('O pipeline não devolveu nenhum roadmap.'));
       if (!state.selectedRoadmapId || !roadmapById(state.selectedRoadmapId)) {
@@ -437,6 +461,7 @@ export function start(): void {
 
   const resetConversation = (): void => {
     closeBridge();
+    historyKey = null;
     state.conversation.messages = [];
     state.conversation.typing = false;
     state.conversation.target = null;
@@ -763,15 +788,15 @@ export function start(): void {
           const current = (): boolean => state.conversation.replyToken === token;
           void awaitDelivery(() => getDelivery(accepted.messageId), () => new Promise((resolve) => window.setTimeout(resolve, 2_000)), current).then((outcome) => {
             if (!outcome || outcome.ok || !current()) return;
-            // Aceita pela fila mas nunca entregue: diz na conversa (o aviso passageiro some) e devolve o texto.
-            closeBridge();
+            // Aceita pela fila mas sem confirmação: diz na conversa (o aviso passageiro some) e devolve o texto. A
+            // conversa da sessão segue acompanhada: uma entrega atrasada ainda traz a resposta.
             state.conversation.typing = false;
             state.conversation.draftText = value;
             state.conversation.messages.push({
               id: `failed-${token}`,
               role: 'agent',
               author: { name: 'Habblaud', provider: route.provider },
-              text: tr('A pergunta não chegou à sessão do agente: {0}', [outcome.reason ?? tr('sem motivo informado')]),
+              text: tr('A entrega não foi confirmada: {0}. Se a sessão responder, a resposta aparece aqui.', [outcome.reason ?? tr('sem motivo informado')]),
               at: formatDateTime(new Date().toISOString()),
             });
             render();

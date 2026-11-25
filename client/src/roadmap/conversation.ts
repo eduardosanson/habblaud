@@ -25,6 +25,14 @@ function providerChip(provider: Provider): HTMLElement {
   return h('span', { class: `rp-provider rp-provider--${provider} rp-provider--xs`, text: providerLabel(provider) });
 }
 
+/** Rótulo do cabeçalho: sessão viva escolhida e ainda sem pergunta não é "sem conversa". */
+export function connectionLabel(connection: 'closed' | 'connecting' | 'live' | 'reconnecting', liveChosen: boolean): string {
+  if (connection === 'live') return tr('Conectado');
+  if (connection === 'reconnecting') return tr('Reconectando');
+  if (connection === 'connecting') return tr('Conectando');
+  return liveChosen ? tr('Pronto para perguntar') : tr('Sem conversa ativa');
+}
+
 export function messageEl(message: ChatMessage): HTMLElement {
   if (message.role === 'user') {
     return h(
@@ -314,14 +322,9 @@ export function renderConversation(state: AppState, actions: AppActions): HTMLEl
         ),
       );
 
-  const connectionLabel =
-    conversation.connection === 'live'
-      ? tr('Conectado')
-      : conversation.connection === 'reconnecting'
-        ? tr('Reconectando')
-        : conversation.connection === 'connecting'
-          ? tr('Conectando')
-          : tr('Sem conversa ativa');
+  const picker = conversation.sessions;
+  const chosen = picker.options?.options.find((option) => picker.choice && sameSession(option, picker.choice));
+  const statusText = connectionLabel(conversation.connection, !!chosen?.live);
 
   return h(
     'aside',
@@ -337,7 +340,7 @@ export function renderConversation(state: AppState, actions: AppActions): HTMLEl
           { class: 'rp-chat__title' },
           h('span', { class: 'rp-chat__eyebrow', text: tr('CONVERSA') }),
           h('h2', { class: 'rp-h2', text: tr('Converse com o agente') }),
-          h('span', { class: `rp-chat__sim is-${conversation.connection}`, text: connectionLabel }),
+          h('span', { class: `rp-chat__sim is-${conversation.connection}`, text: statusText }),
         ),
         h(
           'div',

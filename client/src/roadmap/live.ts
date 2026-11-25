@@ -236,7 +236,8 @@ function buildAgents(snapshots: ApiSnapshot[], sessions: ApiSession[], context: 
       if (!agents.has(actor)) {
         agents.set(actor, {
           id: actor,
-          name: actor === 'pipeline' ? tr('Hermes Pipeline') : capitalize(actor),
+          name: actor === 'pipeline' ? tr('Hermes Pipeline') : actor === 'agent' ? tr('Agente') : capitalize(actor),
+          ...(actor === 'agent' ? { anonymous: true } : {}),
           role: actor === 'pipeline' ? tr('Fonte da verdade') : tr('Registro do roadmap'),
           provider: 'hermes',
           color: PROVIDER_COLOR.hermes,
@@ -499,12 +500,28 @@ export function mapRoadmap(snapshot: ApiSnapshot, agents: Map<string, Agent>): R
   };
 }
 
-export function hydrateLive(snapshots: ApiSnapshot[], sessions: ApiSession[]): Roadmap[] {
+/** A execução mais recente que escreveu um resumo, por item. */
+function attachDeliveries(roadmaps: Roadmap[], executions: readonly ApiItemExecution[]): void {
+  const latest = new Map<string, ApiItemExecution>();
+  const when = (e: ApiItemExecution): string => e.endedAt || e.startedAt;
+  for (const e of executions) {
+    if (!e.summary?.trim()) continue;
+    const known = latest.get(`${e.roadmapId}:${e.itemId}`);
+    if (!known || when(e) >= when(known)) latest.set(`${e.roadmapId}:${e.itemId}`, e);
+  }
+  for (const plan of roadmaps.flatMap((r) => r.phases.flatMap((phase) => phase.plans))) {
+    const e = latest.get(`${plan.roadmapId}:${plan.apiId}`);
+    if (e) plan.delivery = { summary: e.summary!.trim(), author: e.profile, model: e.model, at: formatDateTime(when(e)), changedFiles: e.changedFiles ?? [] };
+  }
+}
+
+export function hydrateLive(snapshots: ApiSnapshot[], sessions: ApiSession[], executions: readonly ApiItemExecution[] = []): Roadmap[] {
   const items = itemIndex(snapshots);
   const titles = new Map(snapshots.map((snapshot) => [snapshot.roadmap.id, snapshot.roadmap.title]));
   const context: AgentContext = { items, roadmapTitles: titles };
   const agents = buildAgents(snapshots, sessions, context);
   const roadmaps = snapshots.map((snapshot) => mapRoadmap(snapshot, agents));
+  attachDeliveries(roadmaps, executions);
   replaceAgents([...agents.values()]);
   replaceSessions(mapSessions(sessions, titles));
   replaceRoadmaps(roadmaps);
@@ -557,7 +574,7 @@ async function executionsOf(roadmapId: string): Promise<ApiItemExecution[]> {
   }
 }
 
-export async function loadLiveData(): Promise<{ snapshots: ApiSnapshot[]; sessions: ApiSession[] }> {
+export async function loadLiveData(): Promise<{ snapshots: ApiSnapshot[]; sessions: ApiSession[]; executions: ApiItemExecution[] }> {
   const status = await getRoadmapStatus();
   if (!status.available) {
     throw new PipelineError(
@@ -572,7 +589,8 @@ export async function loadLiveData(): Promise<{ snapshots: ApiSnapshot[]; sessio
     Promise.all(roadmaps.map((roadmap) => getRoadmap(roadmap.id))),
     Promise.all(roadmaps.map((roadmap) => executionsOf(roadmap.id))),
   ]);
-  return { snapshots, sessions: sessionsFromExecutions(executions.flat()) };
+  const all = executions.flat();
+  return { snapshots, sessions: sessionsFromExecutions(all), executions: all };
 }
 
 export function sourceFor(roadmap: Roadmap | undefined): { revision: number; generatedAt: string; label: string; updatedAt: string } | null {

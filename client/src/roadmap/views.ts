@@ -57,6 +57,7 @@ import {
   planStatusPill,
   statusPill,
 } from './ui';
+import { renderMarkdown } from '../ui/markdown';
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: tr('Tudo') },
@@ -965,7 +966,7 @@ function renderActivity(roadmap: Roadmap, actions: AppActions): HTMLElement {
         h(
           'span',
           { class: 'rp-activity-row__line' },
-          accountChip(agent),
+          agent.anonymous ? null : accountChip(agent),
           h('strong', { text: agent.name }),
           h('span', { text: event.text }),
         ),
@@ -1677,7 +1678,8 @@ function renderPlanDetail(state: AppState, actions: AppActions, roadmap: Roadmap
     h(
       'div',
       { class: 'rp-detail__body' },
-      h('section', { class: 'rp-detail__section' }, h('h3', { class: 'rp-h3', text: tr('Objetivo') }), h('p', { class: 'rp-body', text: plan.objective })),
+      renderDelivery(plan),
+      h('section', { class: 'rp-detail__section' }, h('h3', { class: 'rp-h3', text: tr('Objetivo') }), h('p', { class: 'rp-body', text: plan.objective || tr('O item não descreve o objetivo.') })),
       renderEstimateCard(plan),
       plan.status === 'blocked' ? renderBlockCallout(plan, actions) : null,
       relatedPlan && related
@@ -1719,6 +1721,26 @@ function renderPlanDetail(state: AppState, actions: AppActions, roadmap: Roadmap
       ),
       h('span', { class: 'rp-small rp-muted', text: tr('A resposta vem do agente conectado ao Hermes Pipeline') }),
     ),
+  );
+}
+
+/** Quem revisa só tem o que está no roadmap: a entrega vem antes de tudo, e a falta dela é dita. */
+function renderDelivery(plan: Plan): HTMLElement | null {
+  const waiting = plan.status === 'review';
+  if (!plan.delivery && !waiting) return null;
+  const { delivery } = plan;
+  return h(
+    'section',
+    { class: 'rp-detail__section rp-delivery' },
+    h('h3', { class: 'rp-h3', text: tr('O que foi entregue') }),
+    delivery
+      ? h('p', { class: 'rp-small rp-muted', text: [delivery.author, delivery.model, delivery.at].filter(Boolean).join(' · ') })
+      : h('p', { class: 'rp-body', text: tr('O agente não escreveu o que entregou. Pergunte à sessão antes de decidir.') }),
+    delivery ? renderMarkdown(delivery.summary) : null,
+    delivery?.changedFiles.length ? h('p', { class: 'rp-small', text: tr('Arquivos: {0}', [delivery.changedFiles.join(', ')]) }) : null,
+    waiting
+      ? h('p', { class: 'rp-footnote' }, icon('info'), h('span', { text: tr('Para decidir: confira os critérios abaixo e peça ao agente, pela conversa, para concluir ou ajustar. O Habblaud só lê o roadmap.') }))
+      : null,
   );
 }
 

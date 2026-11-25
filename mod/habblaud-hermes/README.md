@@ -11,8 +11,9 @@ escritório. Nunca bloqueia o agente.
   subagente), no mesmo terminal do Claude Code/Codex.
 - **Ferramentas:** comando/arquivo/busca que o agente está usando, no mesmo cartão do Claude Code/Codex.
 - **Subagentes:** `delegate_task` vira um subagente no escritório; ferramentas da sessão filha ficam nele.
-- **Mensagens:** a caixa do escritório injeta o texto na sessão com `ctx.inject_message`; a mensagem só é confirmada
-  quando o Hermes aceita.
+- **Mensagens:** a caixa do escritório injeta o texto na sessão com `ctx.inject_message`; a entrega usa a chave de rota da
+  sessão (`HERMES_SESSION_KEY`) e só é confirmada quando a pergunta aparece no turno dela. Depois de atualizar o plugin,
+  reinicie o gateway do Hermes.
 - **Aprovações:** o pedido vira um cartão no escritório; aprovar/recusar responde ao Hermes e “Responder no terminal”
   devolve o pedido para lá (o prompt embutido aparece).
 - **Tokens:** `post_api_request` soma entrada/saída por sessão (sem custo, que o Hermes não informa).

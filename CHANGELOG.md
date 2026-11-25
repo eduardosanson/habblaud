@@ -12,6 +12,13 @@ do meio (0.**3**.0).
 
 ### Corrigido (roadmap)
 
+- **Pergunta ao Hermes chega à sessão.** O plugin entrega pela chave de rota (exigida pelo Hermes de gateway único) e
+  só confirma quando a pergunta aparece no turno, não quando o Hermes apenas aceita agendar. Vale depois de reiniciar
+  o gateway do Hermes.
+- **A revisão mostra o que foi entregue.** O detalhe do item traz o resumo da execução, quem fez e os arquivos; sem
+  resumo, a tela diz isso e como decidir.
+- **A conversa sobrevive ao recarregar**, o cabeçalho não diz "sem conversa" com uma sessão viva escolhida, e ações sem
+  agente identificado deixam de ser atribuídas ao Hermes.
 - **Pergunta que não chega deixa de ficar "digitando".** A gaveta acompanha a mensagem na fila do escritório e, se ela
   falha, diz o motivo na conversa e devolve o texto ao campo.
 - **Item terminado não aparece mais como ativo.** Item em revisão ganhou contagem, cor e filtro próprios; roadmap com
