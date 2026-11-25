@@ -76,7 +76,7 @@ describe('proxy do roadmap', () => {
     expect(seenAuth).toBe('Bearer segredo');
   });
 
-  it('a conversa do pipeline está fechada: nem mensagem, nem histórico, nem eventos; a lista de sessões segue aberta (CA06)', async () => {
+  it('as rotas de conversa e de sessões do pipeline estão fechadas e nada chega ao pipeline (CA02)', async () => {
     const seen: string[] = [];
     const upstream = await listen((req, res) => {
       seen.push(`${req.method} ${req.url}`);
@@ -88,8 +88,10 @@ describe('proxy do roadmap', () => {
     expect(post.status).toBe(405);
     expect((await fetch(`${base}/api/roadmap/agent/sessions/sess-nina/messages`)).status).toBe(404);
     expect((await fetch(`${base}/api/roadmap/agent/sessions/sess-nina/events`)).status).toBe(404);
-    expect((await fetch(`${base}/api/roadmap/agent/sessions`)).status).toBe(200);
-    expect(seen).toEqual(['GET /api/agent/sessions']);
+    const sessions = await fetch(`${base}/api/roadmap/agent/sessions`);
+    expect(sessions.status).toBe(404);
+    expect(await sessions.json()).toMatchObject({ error: { message: 'rota de roadmap desconhecida' } });
+    expect(seen).toEqual([]);
     expect((await fetch(`${base}/api/roadmap/qualquer`)).status).toBe(404);
     expect((await fetch(`${base}/api/roadmap/roadmaps`, { method: 'PUT' })).status).toBe(405);
   });
@@ -107,23 +109,11 @@ describe('proxy do roadmap', () => {
     sse.close();
   });
 
-  it('com HABBLAUD_ROADMAP_IDS filtra a lista, as sessões e bloqueia outros snapshots', async () => {
+  it('com HABBLAUD_ROADMAP_IDS filtra a lista e bloqueia outros snapshots', async () => {
     const upstream = await listen((req, res) => {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       if (req.url === '/api/roadmaps') {
         res.end(JSON.stringify({ roadmaps: [{ id: 'atlas-ondas' }, { id: 'praca' }, { id: 'confianca' }] }));
-        return;
-      }
-      if (req.url === '/api/agent/sessions') {
-        res.end(
-          JSON.stringify({
-            sessions: [
-              { id: 'sess-atlas', roadmapIds: ['atlas-ondas'] },
-              { id: 'sess-seed', roadmapIds: ['praca', 'confianca'] },
-              { id: 'sess-mixed', roadmapIds: ['atlas-ondas', 'praca'] },
-            ],
-          }),
-        );
         return;
       }
       res.end(JSON.stringify({ roadmap: { id: 'praca' } }));
@@ -131,45 +121,54 @@ describe('proxy do roadmap', () => {
     const base = await startProxy({ ...CONFIG, url: upstream, ids: ['atlas-ondas'] });
     expect(await fetch(`${base}/api/roadmap/status`).then((r) => r.json())).toMatchObject({ roadmaps: ['atlas-ondas'] });
     expect(await fetch(`${base}/api/roadmap/roadmaps`).then((r) => r.json())).toEqual({ roadmaps: [{ id: 'atlas-ondas' }] });
-    expect(await fetch(`${base}/api/roadmap/agent/sessions`).then((r) => r.json())).toEqual({
-      sessions: [
-        { id: 'sess-atlas', roadmapIds: ['atlas-ondas'] },
-        { id: 'sess-mixed', roadmapIds: ['atlas-ondas'] },
-      ],
-    });
     expect((await fetch(`${base}/api/roadmap/roadmaps/praca`)).status).toBe(404);
     expect((await fetch(`${base}/api/roadmap/roadmaps/praca/events`)).status).toBe(404);
     expect((await fetch(`${base}/api/roadmap/roadmaps/atlas-ondas`)).status).toBe(200);
   });
 
-  it('repassa participants e executions do item, somente leitura, com o token', async () => {
+  it('repassa as executions do item e do roadmap, somente leitura, com o token (CA02)', async () => {
     const seen: string[] = [];
     const upstream = await listen((req, res) => {
       seen.push(`${req.method} ${req.url} ${String(req.headers.authorization)}`);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ participants: [] }));
+      res.end(JSON.stringify({ executions: [] }));
     });
     const base = await startProxy({ ...CONFIG, url: upstream });
-    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/participants`)).status).toBe(200);
     expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/executions`)).status).toBe(200);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/executions?limit=50`)).status).toBe(200);
     expect(seen).toEqual([
-      'GET /api/roadmaps/praca/items/praca-3.7/participants Bearer segredo',
       'GET /api/roadmaps/praca/items/praca-3.7/executions Bearer segredo',
+      'GET /api/roadmaps/praca/executions?limit=50 Bearer segredo',
     ]);
     // POST nessas rotas não vira escrita: o pipeline só registra pelas ferramentas do agente.
-    const posted = await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/participants`, { method: 'POST', body: '{}' });
-    expect(posted.status).toBe(405);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/executions`, { method: 'POST', body: '{}' })).status).toBe(405);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/executions`, { method: 'POST', body: '{}' })).status).toBe(405);
   });
 
-  it('com HABBLAUD_ROADMAP_IDS a allowlist vale também para as rotas do item', async () => {
+  it('participants não existe mais no pipeline e fica fechado (CA02)', async () => {
+    const seen: string[] = [];
+    const upstream = await listen((req, res) => {
+      seen.push(String(req.url));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{}');
+    });
+    const base = await startProxy({ ...CONFIG, url: upstream });
+    const res = await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/participants`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ error: { message: 'rota de roadmap desconhecida' } });
+    expect(seen).toEqual([]);
+  });
+
+  it('com HABBLAUD_ROADMAP_IDS a allowlist vale também para as executions do item e do roadmap', async () => {
     const upstream = await listen((_req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end('{}');
     });
     const base = await startProxy({ ...CONFIG, url: upstream, ids: ['atlas-ondas'] });
-    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/participants`)).status).toBe(404);
     expect((await fetch(`${base}/api/roadmap/roadmaps/praca/items/praca-3.7/executions`)).status).toBe(404);
-    expect((await fetch(`${base}/api/roadmap/roadmaps/atlas-ondas/items/atlas-ondas-E1/participants`)).status).toBe(200);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/praca/executions`)).status).toBe(404);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/atlas-ondas/items/atlas-ondas-E1/executions`)).status).toBe(200);
+    expect((await fetch(`${base}/api/roadmap/roadmaps/atlas-ondas/executions`)).status).toBe(200);
   });
 
   it('responde 502 quando o pipeline está fora do ar', async () => {

@@ -24,8 +24,8 @@ const ALLOWED: readonly RegExp[] = [
   /^\/api\/roadmaps$/,
   /^\/api\/roadmaps\/[^/]+$/,
   /^\/api\/roadmaps\/[^/]+\/events$/,
-  /^\/api\/roadmaps\/[^/]+\/items\/[^/]+\/(?:participants|executions)$/,
-  /^\/api\/agent\/sessions$/,
+  /^\/api\/roadmaps\/[^/]+\/executions$/,
+  /^\/api\/roadmaps\/[^/]+\/items\/[^/]+\/executions$/,
 ];
 
 export interface RoadmapStatus {
@@ -253,25 +253,19 @@ export function createRoadmapHandler(opts: RoadmapProxyOptions): (req: IncomingM
       sendJson(res, 404, errorBody('not_found', tr('rota de roadmap desconhecida')));
       return;
     }
-    const snapshotMatch = /^\/api\/roadmaps\/([^/]+)(?:\/events|\/items\/[^/]+\/(?:participants|executions))?$/.exec(targetPath);
+    const snapshotMatch = /^\/api\/roadmaps\/([^/]+)(?:\/events|\/executions|\/items\/[^/]+\/executions)?$/.exec(targetPath);
     if (snapshotMatch && !allowedId(config, decodeId(snapshotMatch[1]!))) {
       req.resume();
       sendJson(res, 404, errorBody('not_found', tr('roadmap fora da lista permitida')));
       return;
     }
     const ca = extraCaOption(readCaPath());
-    if (config.ids?.length && method === 'GET' && (targetPath === '/api/roadmaps' || targetPath === '/api/agent/sessions')) {
-      const listPath = targetPath;
-      void upstreamJson(config.url, config.token, listPath, url.search, ca)
+    if (config.ids?.length && method === 'GET' && targetPath === '/api/roadmaps') {
+      void upstreamJson(config.url, config.token, targetPath, url.search, ca)
         .then((result) =>
           filteredList(res, result, (data) => {
-            if (listPath === '/api/roadmaps' && Array.isArray(data.roadmaps)) {
+            if (Array.isArray(data.roadmaps)) {
               data.roadmaps = (data.roadmaps as { id?: unknown }[]).filter((roadmap) => typeof roadmap.id === 'string' && allowedId(config, roadmap.id));
-            }
-            if (listPath === '/api/agent/sessions' && Array.isArray(data.sessions)) {
-              data.sessions = (data.sessions as { roadmapIds?: unknown }[])
-                .filter((session) => Array.isArray(session.roadmapIds) && session.roadmapIds.some((id) => typeof id === 'string' && allowedId(config, id)))
-                .map((session) => ({ ...session, roadmapIds: (session.roadmapIds as string[]).filter((id) => allowedId(config, id)) }));
             }
           }),
         )
