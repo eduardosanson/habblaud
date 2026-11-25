@@ -25,6 +25,8 @@ import logging
 import os
 import queue
 import re
+import sys
+import types
 import threading
 import time
 import urllib.parse
@@ -59,7 +61,6 @@ _warn_at: Optional[float] = None
 _warn_suppressed = 0
 _last_pid = os.getpid()
 _ctx = None
-_contexts: list[tuple[Any, str, str]] = []
 _plugin_profile = "default"
 _plugin_home = ""
 _registered = False
@@ -69,9 +70,25 @@ _history_sent: set[str] = set()
 _history_lock = threading.Lock()
 _live: dict[str, dict[str, Any]] = {}
 _live_lock = threading.Lock()
-# Perguntas aceitas pelo Hermes que ainda não apareceram na sessão (id da sessão -> [(id, texto, quando)]).
-_pending: dict[str, list[tuple[str, str, float]]] = {}
 PENDING_KEEP_S = 600.0
+# Cópias do mesmo hook chegam em instantes; depois disto o mesmo conteúdo é um acontecimento novo.
+CLAIM_KEEP_S = 5.0
+CLAIMS_MAX = 2000
+_INSTANCE = object()
+
+
+def _shared():
+    """Estado comum às cópias do plugin neste processo: o gateway do Hermes carrega uma por perfil."""
+    module = sys.modules.get("_habblaud_shared")
+    if module is None:
+        module = types.ModuleType("_habblaud_shared")
+        module.lock = threading.Lock()
+        module.contexts = {}  # perfil -> contexto do plugin daquele perfil (é por ele que se injeta)
+        module.sessions = {}  # id da sessão -> {"profile", "route"}
+        module.claims = {}    # acontecimento -> (instância que publicou, quando)
+        module.pending = {}   # id da sessão -> [(id da mensagem, texto, quando)]
+        module = sys.modules.setdefault("_habblaud_shared", module)
+    return module
 _heartbeat_at = 0.0
 _approval_context: dict[str, dict[str, str]] = {}
 _approval_lock = threading.Lock()
@@ -138,10 +155,36 @@ def _owner_home() -> str:
     return _plugin_home if _registered and _plugin_home else _home()
 
 
-def _session_owner_allows() -> bool:
-    """Sem contexto de sessão (CLI/teste), vale o plugin; no gateway, só o plugin do perfil dono publica."""
-    owner = _session_profile()
-    return not owner or owner == _owner_profile()
+def _target_profile(session_id: str) -> str:
+    """Perfil dono do acontecimento: o do contexto, senão o que a sessão já mostrou, senão o desta cópia."""
+    return _session_profile() or _shared().sessions.get(session_id, {}).get("profile") or _owner_profile()
+
+
+def _home_of(profile: str) -> str:
+    own = _owner_home()
+    if profile == _owner_profile():
+        return own
+    home = Path(own)
+    root = home.parent.parent if home.parent.name == "profiles" else home
+    return str(root if profile == "default" else root / "profiles" / profile)
+
+
+def _claim(event: Dict[str, Any]) -> bool:
+    """False quando outra cópia do plugin acabou de publicar o mesmo acontecimento."""
+    if event.get("type") == "session_heartbeat":
+        return True
+    keys = ("type", "session_id", "parent_session_id", "child_session_id", "call_id", "request_id", "turn_id",
+            "usage_id", "text")
+    key = tuple(str(event.get(name) or "") for name in keys)
+    shared, now = _shared(), time.monotonic()
+    with shared.lock:
+        claimed = shared.claims.get(key)
+        if claimed and claimed[0] is not _INSTANCE and now - claimed[1] < CLAIM_KEEP_S:
+            return False
+        shared.claims[key] = (_INSTANCE, now)
+        while len(shared.claims) > CLAIMS_MAX:
+            shared.claims.pop(next(iter(shared.claims)))
+    return True
 
 
 def _http_json(path: str, body: Optional[dict[str, Any]] = None, *, timeout: float = 3.0) -> Optional[dict[str, Any]]:
@@ -364,8 +407,9 @@ def _publish(event: Dict[str, Any]) -> None:
         return
     if not isinstance(event, dict) or not event.get("type"):
         return
-    if not _session_owner_allows():
+    if not _claim(event):
         return
+    profile = _target_profile(str(event.get("session_id") or event.get("parent_session_id") or ""))
     if os.getpid() != _last_pid:
         _after_fork()
     with _event_lock:
@@ -373,7 +417,7 @@ def _publish(event: Dict[str, Any]) -> None:
         seq = _event_seq
     event.setdefault("ts", time.time())
     event.setdefault("event_id", f"{os.getpid()}-{time.time_ns()}-{seq}")
-    body = {"profile": _owner_profile(), "home": _owner_home(), "event": event}
+    body = {"profile": profile, "home": _home_of(profile), "event": event}
     _start_worker()
     try:
         _queue.put_nowait(body)
@@ -397,8 +441,9 @@ def _session_route() -> str:
 
 def _confirm_delivery(session_id: str, text: str) -> None:
     """A pergunta entrou na sessão (apareceu como mensagem do turno): só agora ela está entregue."""
-    with _live_lock:
-        waiting = _pending.get(session_id, [])
+    shared = _shared()
+    with shared.lock:
+        waiting = shared.pending.get(session_id, [])
         found = next((item for item in waiting if item[1].strip() in text), None)
         if found:
             waiting.remove(found)
@@ -418,9 +463,14 @@ def _remember_session(session_id: Any, status: str = "idle", *, platform: Any = 
             info["platform"] = str(platform)
         if project:
             info["project"] = str(project)
-        route = _session_route()
+    shared = _shared()
+    with shared.lock:
+        known = shared.sessions.setdefault(sid, {})
+        route, profile = _session_route(), _session_profile()
         if route:
-            info["route"] = route
+            known["route"] = route
+        if profile:
+            known["profile"] = profile
 
 
 def _forget_session(session_id: Any) -> None:
@@ -739,55 +789,59 @@ def _poll_once() -> None:
     """One inbox round; separated from the loop so tests can call it without sleeping."""
     if _disabled():
         return
-    contexts = list(_contexts) or ([(_ctx, _plugin_profile, _home())] if _ctx is not None else [])
+    shared = _shared()
+    contexts = dict(shared.contexts)
+    if _ctx is not None:
+        contexts.setdefault(_plugin_profile, _ctx)
     if not contexts:
         return
     listing = _http_json("/api/hermes/sessions", None, timeout=4.0)
     sessions = listing.get("sessions") if isinstance(listing, dict) else None
-    for ctx, profile, _home_dir in contexts:
-        if not hasattr(ctx, "inject_message"):
+    for item in sessions if isinstance(sessions, list) else []:
+        if not isinstance(item, dict):
             continue
-        for item in sessions if isinstance(sessions, list) else []:
-            if not isinstance(item, dict) or item.get("profile") != profile:
-                continue
-            session = item.get("session")
-            account = item.get("account")
-            if not isinstance(session, str) or not session:
-                continue
-            inbox = _http_json(
-                "/api/mod/inbox",
-                {"provider": "hermes", "account": account, "session": session, "profile": profile},
-                timeout=4.0,
-            )
-            messages = inbox.get("messages") if isinstance(inbox, dict) else None
-            for message in messages if isinstance(messages, list) else []:
-                if not isinstance(message, dict):
-                    continue
-                mid, text = message.get("id"), message.get("text")
-                if not isinstance(mid, str) or not isinstance(text, str) or not text.strip():
-                    continue
-                with _live_lock:
-                    key = _live.get(session, {}).get("route") or session
-                    # Antes de injetar: o turno pode começar noutra thread antes de a chamada voltar.
-                    waiting = _pending.setdefault(session, [])
-                    waiting[:] = [item for item in waiting if time.monotonic() - item[2] < PENDING_KEEP_S]
-                    entry = (mid, text, time.monotonic())
-                    waiting.append(entry)
-                try:
-                    accepted = bool(ctx.inject_message(text, session_key=key))
-                except Exception as exc:
-                    _warn(exc)
-                    accepted = False
-                if not accepted:
-                    # Outro processo do mesmo perfil pode ser o dono da sessão: devolve à fila para ele buscar.
-                    with _live_lock:
-                        if entry in _pending.get(session, []):
-                            _pending[session].remove(entry)
-                    _http_json(
-                        "/api/mod/inbox/ack",
-                        {"session": session, "results": [{"id": mid, "ok": False, "retry": True, "error": "sessão não está neste processo do Hermes"}]},
-                        timeout=4.0,
-                    )
+        profile, session, account = item.get("profile"), item.get("session"), item.get("account")
+        # o Hermes só aceita a mensagem pelo contexto do plugin do perfil dono da sessão
+        ctx = contexts.get(profile)
+        if not hasattr(ctx, "inject_message") or not isinstance(session, str) or not session:
+            continue
+        inbox = _http_json(
+            "/api/mod/inbox",
+            {"provider": "hermes", "account": account, "session": session, "profile": profile},
+            timeout=4.0,
+        )
+        messages = inbox.get("messages") if isinstance(inbox, dict) else None
+        for message in messages if isinstance(messages, list) else []:
+            if isinstance(message, dict):
+                _deliver(ctx, session, message.get("id"), message.get("text"))
+
+
+def _deliver(ctx: Any, session: str, mid: Any, text: Any) -> None:
+    if not isinstance(mid, str) or not isinstance(text, str) or not text.strip():
+        return
+    shared = _shared()
+    with shared.lock:
+        key = shared.sessions.get(session, {}).get("route") or session
+        # Antes de injetar: o turno pode começar noutra thread antes de a chamada voltar.
+        waiting = shared.pending.setdefault(session, [])
+        waiting[:] = [item for item in waiting if time.monotonic() - item[2] < PENDING_KEEP_S]
+        entry = (mid, text, time.monotonic())
+        waiting.append(entry)
+    try:
+        accepted = bool(ctx.inject_message(text, session_key=key))
+    except Exception as exc:
+        _warn(exc)
+        accepted = False
+    if not accepted:
+        # Outro processo do mesmo perfil pode ser o dono da sessão: devolve à fila para ele buscar.
+        with shared.lock:
+            if entry in shared.pending.get(session, []):
+                shared.pending[session].remove(entry)
+        _http_json(
+            "/api/mod/inbox/ack",
+            {"session": session, "results": [{"id": mid, "ok": False, "retry": True, "error": "sessão não está neste processo do Hermes"}]},
+            timeout=4.0,
+        )
 
 
 def _poll_inbox() -> None:
@@ -817,8 +871,7 @@ def register(ctx: Any) -> None:
     _plugin_profile = _profile()
     _plugin_home = _home()
     _registered = True
-    if not any(item[0] is ctx for item in _contexts):
-        _contexts.append((ctx, _plugin_profile, _plugin_home))
+    _shared().contexts[_plugin_profile] = ctx
     core = (
         ("on_session_start", _on_session_start),
         ("on_session_end", _on_session_end),
