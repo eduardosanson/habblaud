@@ -21,6 +21,7 @@ def load(tmp_path: Path):
     constants.profile_name_for_home = lambda _home: "developer"
     sys.modules["hermes_constants"] = constants
     sys.modules.pop("habblaud_hermes_test", None)
+    sys.modules.pop("_habblaud_shared", None)
     spec = importlib.util.spec_from_file_location("habblaud_hermes_test", PLUGIN)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -309,15 +310,102 @@ def test_heartbeat_remembers_live_sessions_and_forgets_ended_ones(tmp_path, monk
     assert len([e for e in events if e["type"] == "session_heartbeat"]) == 1
 
 
-def test_gateway_session_profile_only_lets_the_owner_plugin_publish(tmp_path, monkeypatch):
-    plugin = load(tmp_path)
-    plugin._registered = True
-    plugin._plugin_profile = "developer"
-    plugin._plugin_home = "/x/developer"
-    monkeypatch.setattr(plugin, "_session_profile", lambda: "tester")
-    assert plugin._session_owner_allows() is False
-    monkeypatch.setattr(plugin, "_session_profile", lambda: "developer")
-    assert plugin._session_owner_allows() is True
-    # CLI/teste sem contexto de sessão: o plugin publica normalmente.
-    monkeypatch.setattr(plugin, "_session_profile", lambda: "")
-    assert plugin._session_owner_allows() is True
+def two_instances(tmp_path, monkeypatch):
+    """Um processo de gateway: uma cópia do plugin por perfil, como o Hermes de gateway único carrega."""
+    sys.modules.pop("_habblaud_shared", None)
+    root = tmp_path / ".hermes"
+    instances = {}
+    for profile, home in (("default", root), ("gpt", root / "profiles" / "gpt")):
+        home.mkdir(parents=True, exist_ok=True)
+        constants = types.ModuleType("hermes_constants")
+        constants.get_hermes_home = lambda home=home: home
+        constants.profile_name_for_home = lambda _h, profile=profile: profile
+        sys.modules["hermes_constants"] = constants
+        spec = importlib.util.spec_from_file_location(f"habblaud_{profile}", PLUGIN)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        monkeypatch.setattr(module, "_start_poller", lambda: None)
+        monkeypatch.setattr(module, "_start_worker", lambda: None)
+        instances[profile] = module
+    return root, instances
+
+
+def published(module):
+    out = []
+    while not module._queue.empty():
+        out.append(module._queue.get_nowait())
+    return out
+
+
+class Ctx:
+    def __init__(self, accepted=True):
+        self.accepted, self.calls = accepted, []
+
+    def inject_message(self, text, *, session_key=None):
+        self.calls.append((text, session_key))
+        return self.accepted
+
+    def register_hook(self, name, callback):
+        pass
+
+
+def test_session_of_another_profile_is_published_once_under_its_own_profile(tmp_path, monkeypatch):
+    root, plugins = two_instances(tmp_path, monkeypatch)
+    for module in plugins.values():
+        module.register(Ctx())
+        monkeypatch.setattr(module, "_session_profile", lambda: "gpt")
+
+    # o gateway pode entregar o hook só à cópia do perfil padrão
+    plugins["default"]._on_session_start(session_id="s-gpt", platform="cli", project="/p")
+    first = published(plugins["default"])
+    assert [(b["profile"], b["home"]) for b in first] == [("gpt", str(root / "profiles" / "gpt"))]
+
+    # ou às duas: sai uma vez só
+    plugins["default"]._pre_tool_call(session_id="s-gpt", tool_call_id="c1", tool_name="terminal", args={})
+    plugins["gpt"]._pre_tool_call(session_id="s-gpt", tool_call_id="c1", tool_name="terminal", args={})
+    assert len(published(plugins["default"])) + len(published(plugins["gpt"])) == 1
+
+
+def test_heartbeat_keeps_the_session_profile_outside_the_session_context(tmp_path, monkeypatch):
+    _, plugins = two_instances(tmp_path, monkeypatch)
+    default = plugins["default"]
+    default.register(Ctx())
+    monkeypatch.setattr(default, "_session_profile", lambda: "gpt")
+    default._on_session_start(session_id="s-gpt", platform="cli", project="/p")
+    published(default)
+    monkeypatch.setattr(default, "_session_profile", lambda: "")
+    default._heartbeat_once(now=31)
+    assert [(b["profile"], b["event"]["type"]) for b in published(default)] == [("gpt", "session_heartbeat")]
+
+
+def test_inbox_uses_the_context_and_route_of_the_session_profile(tmp_path, monkeypatch):
+    _, plugins = two_instances(tmp_path, monkeypatch)
+    default, gpt = plugins["default"], plugins["gpt"]
+    ctx_default, ctx_gpt = Ctx(), Ctx()
+    default.register(ctx_default)
+    gpt.register(ctx_gpt)
+    acks, served = [], set()
+
+    def fake_http(path, body=None, *, timeout=3.0):
+        if path == "/api/hermes/sessions":
+            return {"sessions": [{"profile": "gpt", "account": "gpt", "session": "s-gpt"}]}
+        if path == "/api/mod/inbox":
+            if served:
+                return {"messages": []}
+            served.add(body["session"])
+            return {"messages": [{"id": "m1", "text": "como ficou?"}]}
+        acks.append(body)
+        return {"ok": True}
+
+    for module in plugins.values():
+        monkeypatch.setattr(module, "_http_json", fake_http)
+    monkeypatch.setattr(default, "_session_profile", lambda: "gpt")
+    monkeypatch.setattr(default, "_session_route", lambda: "agent:gpt:local:dm:s-gpt")
+    default._on_session_start(session_id="s-gpt", platform="cli", project="/p")
+
+    default._poll_once()
+    assert ctx_default.calls == [] and ctx_gpt.calls == [("como ficou?", "agent:gpt:local:dm:s-gpt")]
+    default._pre_llm_call(session_id="s-gpt", user_message="como ficou?")
+    assert acks == [{"session": "s-gpt", "results": [{"id": "m1", "ok": True}]}]
+
+

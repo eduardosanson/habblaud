@@ -12,6 +12,9 @@ do meio (0.**3**.0).
 
 ### Corrigido (roadmap)
 
+- **Sessão do Hermes de outro perfil volta ao escritório.** O gateway carrega uma cópia do plugin por perfil; as
+  cópias agora dividem o estado: cada acontecimento sai uma vez, na conta do perfil da sessão, e a pergunta é injetada
+  pelo contexto desse perfil. Vale depois de reiniciar o gateway do Hermes.
 - **Pergunta ao Hermes chega à sessão.** O plugin entrega pela chave de rota (exigida pelo Hermes de gateway único) e
   só confirma quando a pergunta aparece no turno, não quando o Hermes apenas aceita agendar. Vale depois de reiniciar
   o gateway do Hermes.
