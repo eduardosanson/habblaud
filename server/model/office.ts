@@ -645,7 +645,7 @@ export class Office {
     if (parent.info.provider) info.provider = parent.info.provider;
     if (p.title) info.title = p.title;
     if (p.background) info.background = true;
-    this.agents.set(p.id, { info, history: [], turnStart: now });
+    this.agents.set(p.id, { info, history: [], turnStart: now, cwd: parent.cwd });
     this.markDirty();
     return true;
   }

@@ -430,6 +430,7 @@ describe('Office', () => {
     office.addMain({ id: 'acc:1', account: 'acc', sessionId: 's1', cwd: '/p/a', role: 'x', startedAt: now(), status: 'working' });
     office.addSub({ id: 's1:x', parentId: 'acc:1', sessionId: 's1', role: 'Explore', title: 'Mapear', background: false, startedAt: now() });
     office.addSub({ id: 's1:y', parentId: 'acc:1', sessionId: 's1', role: 'Plan', background: true, startedAt: now() });
+    expect(office.agentCwd('s1:x')).toBe('/p/a');
     office.completeSub('s1:x');
     expect(office.commit().notices.at(-1)?.text).toMatch(/entregou “Mapear” para/);
     advance(DONE_GRACE_MS + 1);

@@ -20,6 +20,7 @@ export interface DetectedAccount {
   configDir: string;
   short: string;
   name: string;
+  profileName?: string;
   email?: string;
   organization?: string;
   plan?: string;

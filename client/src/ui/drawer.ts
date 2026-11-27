@@ -542,7 +542,11 @@ class AgentView {
     setHidden(this.title, !a.title);
     setTitle(this.title, a.title ?? '');
     updateAccountChip(this.accChip, account, a.account, a.provider);
-    setText(this.accName, account?.name ?? a.account);
+    const profile = account?.profileName;
+    const accountLabel = provider === 'hermes' && profile
+      ? `Hermes · ${profile === 'default' ? tr('padrão') : profile}`
+      : account?.name ?? a.account;
+    setText(this.accName, accountLabel);
     updateProviderTag(this.accProv, provider, account?.name ?? '');
     // E-mail (Claude Code) ou, no Codex (sem e-mail), o plano.
     const accSub = account?.email ?? (codex && account?.plan ? tr('plano {0}', [account.plan]) : '');

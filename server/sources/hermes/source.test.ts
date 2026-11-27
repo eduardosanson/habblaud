@@ -51,6 +51,7 @@ describe('HermesSource: sessão principal', () => {
     expect(a).toMatchObject({ kind: 'main', provider: 'hermes', account: 'developer', sessionId: 's1', roomId: '/p/loja', status: 'idle' });
     expect(a?.role).toBe('Hermes (cli)');
     expect(accounts.entriesOf('hermes').map((e) => [e.id, e.detected.name])).toEqual([['developer', 'Hermes D']]);
+    expect(snap(office).accounts).toContainEqual(expect.objectContaining({ id: 'developer', name: 'Hermes D', profileName: 'developer' }));
     expect(source.sources()).toEqual([{ label: 'hermes', provider: 'hermes', path: DEV, sessions: 1, ok: true }]);
   });
 

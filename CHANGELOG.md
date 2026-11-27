@@ -10,6 +10,10 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Corrigido (escritório)
+
+- **Nome completo do perfil Hermes.** Ao clicar no agente, o detalhe mostra o nome do perfil junto da identificação Hermes.
+
 ### Corrigido (roadmap)
 
 - **Pergunta ao Hermes chega à sessão.** O plugin entrega pela chave de rota (exigida pelo Hermes de gateway único) e

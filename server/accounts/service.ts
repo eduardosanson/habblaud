@@ -240,6 +240,7 @@ export class AccountsService {
       };
       // Ausente = 'claude' (o snapshot das contas do Claude Code não muda).
       if (e.provider !== 'claude') info.provider = e.provider;
+      if (d.profileName) info.profileName = d.profileName;
       if (d.email) info.email = d.email;
       if (d.organization) info.organization = d.organization;
       if (d.plan) info.plan = d.plan;
