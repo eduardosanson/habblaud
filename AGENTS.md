@@ -5,6 +5,19 @@ estão fazendo: servidor Node sem dependências de runtime (`server/`), página 
 (`shared/`). Todo texto visível passa por `tr('texto em PT')`, com as traduções em `shared/locales/` (`npm run
 i18n:check`), e toda mudança visível entra em "Não lançado" no `CHANGELOG.md`. O resto está no `CONTRIBUTING.md`.
 
+## Stack
+
+TypeScript com Node.js 22.12+, Vite, esbuild e Vitest.
+
+## Skills disponíveis
+
+- [habblaud-build](.codex/skills/habblaud-build/SKILL.md)
+- [habblaud-test](.codex/skills/habblaud-test/SKILL.md)
+
+## Fluxo de trabalho
+
+Siga o fluxo global em `~/.codex/AGENTS.md`. Ative o hook versionado com `git config core.hooksPath .githooks`.
+
 ## AVISO — Habblaud World: dados verdadeiros
 
 O código em `shared/world/` e `server/world/` decide o que o Habblaud envia ao Habblaud World. Modificá-lo (ou qualquer

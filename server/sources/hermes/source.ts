@@ -348,6 +348,7 @@ export class HermesSource implements AgentSource {
         configDir: p.home,
         short: p.short,
         name: p.display,
+        profileName: p.name,
         color: p.color,
       }),
     );

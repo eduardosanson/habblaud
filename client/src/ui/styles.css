@@ -2308,7 +2308,8 @@
 }
 
 .ui-hero__acc-name {
-  flex: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-weight: 600;
 }
 

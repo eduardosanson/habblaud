@@ -332,6 +332,8 @@ export interface AccountInfo {
   short: string;
   /** Nome amigável. Ex.: "Conta C". */
   name: string;
+  /** Nome original do perfil Hermes, independente do nome de exibição e do ID da conta. */
+  profileName?: string;
   email?: string;
   organization?: string;
   /** Plano, quando conhecido (ex.: "Max", "Pro"). */
